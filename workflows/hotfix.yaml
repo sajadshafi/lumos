@@ -1,0 +1,38 @@
+# Hotfix workflow: no planning stage.
+#
+# Appropriate when the defect and its fix are already understood — a failing test,
+# a reported regression with a known cause. Skipping feature-planner is a real
+# trade-off, not a shortcut: nothing upstream will catch a misdiagnosis, so the
+# review budget is deliberately unchanged.
+#
+# Not appropriate for anything that changes a schema, an endpoint contract, or
+# more than one vertical slice. Use `default` for those.
+
+version: 1
+name: hotfix
+description: Fast path for a well-understood defect with a known cause.
+max_total_stages: 24
+
+stages:
+  - skill: coding
+    description: Apply the fix, including a test that fails before it and passes after.
+    retry:
+      max_attempts: 3
+
+  - skill: testing
+    description: Prove the regression is covered and nothing adjacent broke.
+    retry:
+      max_attempts: 3
+
+  - skill: reviewer
+    description: Confirm the fix addresses the cause, not the symptom.
+    retry:
+      max_attempts: 2
+    remediation:
+      skill: fixer
+      max_cycles: 2
+
+  - skill: post-feature-implementation
+    description: Open the pull request with the regression documented.
+    retry:
+      max_attempts: 2

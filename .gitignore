@@ -1,0 +1,32 @@
+# Runtime artefacts of individual runs. The engine's *code* and *workflow
+# definitions* are project knowledge and belong in git; the state, logs and
+# per-attempt envelopes of a particular run do not — they are large,
+# machine-generated, and meaningful only to the session that produced them.
+#
+# The directories themselves are kept (via .gitkeep) so a fresh clone can run
+# without a mkdir step. This also covers runtime dirs inside example projects.
+state/*.json
+logs/*.jsonl
+runs/*
+examples/**/state/*.json
+examples/**/logs/*.jsonl
+examples/**/runs/*
+
+!.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Tooling
+.venv/
+venv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/

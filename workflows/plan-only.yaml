@@ -1,0 +1,20 @@
+# Planning workflow: stop after the plan.
+#
+# Exists because "the plan revealed the work is not worth doing" is a successful
+# outcome, not a failed run (workflow-contract.md §4). Running the planner alone
+# is the cheapest way to find that out, and a completed plan-only run is a
+# legitimate terminal state that costs one skill invocation instead of six.
+#
+# Its output feeds a later `default` run: the plan report is on disk under
+# runs/<run-id>/feature-planner/ and can be passed forward.
+
+version: 1
+name: plan-only
+description: Produce and review an implementation plan without implementing it.
+max_total_stages: 4
+
+stages:
+  - skill: feature-planner
+    description: Produce a file-level implementation plan and an honest cost estimate.
+    retry:
+      max_attempts: 2

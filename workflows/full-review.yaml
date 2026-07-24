@@ -1,0 +1,71 @@
+# Full review workflow — the complete chain from workflow-contract.md §4.
+#
+# REQUIRES TWO SKILLS THAT DO NOT YET EXIST.
+#
+# `examples/skills/security/` and `examples/skills/performance/` currently contain
+# READMEs but no SKILL.md, so they are inert by the repository's own convention
+# and this workflow will fail validation:
+#
+#     python3 -m orchestrator validate full-review
+#     -> {"ok": false, "problems": ["security: directory exists but has no SKILL.md (inert)", ...]}
+#
+# That failure is the intended behaviour. The file is checked in as the executable
+# specification of what those skills must satisfy to join the pipeline, and as the
+# proof that adding a stage is a YAML edit rather than an orchestrator change.
+# Write the two SKILL.md files and this workflow starts working with no code change.
+#
+# Use for: schema migrations, authentication and permission changes, anything
+# touching blob storage or PII, and endpoints on a hot listing path.
+
+version: 1
+name: full-review
+description: Delivery pipeline with dedicated security and performance review gates.
+max_total_stages: 60
+
+stages:
+  - skill: feature-planner
+    description: Produce a file-level implementation plan grounded in the actual architecture.
+    retry:
+      max_attempts: 2
+
+  - skill: coding
+    description: Execute the approved plan exactly, with tests.
+    retry:
+      max_attempts: 3
+
+  - skill: testing
+    description: Close coverage gaps, especially failure modes and authorization paths.
+    retry:
+      max_attempts: 4
+
+  - skill: reviewer
+    description: Architectural conformance and correctness.
+    retry:
+      max_attempts: 2
+    remediation:
+      skill: fixer
+      max_cycles: 3
+
+  - skill: security
+    description: Authorization, tenant isolation, injection surfaces, secret handling.
+    retry:
+      max_attempts: 2
+    remediation:
+      skill: fixer
+      max_cycles: 2
+
+  - skill: performance
+    description: Query shape, N+1s, missing indexes, over-fetching on listing endpoints.
+    retry:
+      max_attempts: 2
+    remediation:
+      skill: fixer
+      max_cycles: 2
+
+  # A human signs off before the PR opens. The engine pauses here and will not
+  # proceed until `orchestrator approve <run> --stage post-feature-implementation`.
+  - skill: post-feature-implementation
+    description: Update docs, compose the PR description, open the pull request.
+    requires_approval: true
+    retry:
+      max_attempts: 2

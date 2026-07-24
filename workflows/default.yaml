@@ -1,0 +1,49 @@
+# Default engineering workflow: plan -> implement -> test -> review -> ship.
+#
+# This is the pipeline described in examples/shared/workflow-contract.md §4,
+# minus the security and performance stages, which are inert in this repository
+# (their directories hold READMEs but no SKILL.md). See full-review.yaml.
+#
+# Retry budgets are not uniform, and the asymmetry is deliberate:
+#   feature-planner  a plan that failed twice is under-specified; more attempts
+#                    will not fix a bad input, so the budget is tight.
+#   coding           genuinely benefits from a retry with the failure quoted back.
+#   testing          each run produces new information, so it earns more attempts.
+#   reviewer         reviewing is cheap and near-deterministic; the loop budget
+#                    lives in `remediation.max_cycles`, not in attempts.
+
+version: 1
+name: default
+description: Full feature delivery from a requirement to an open pull request.
+max_total_stages: 40
+
+stages:
+  - skill: feature-planner
+    description: Produce a file-level implementation plan grounded in the actual architecture.
+    retry:
+      max_attempts: 2
+
+  - skill: coding
+    description: Execute the approved plan exactly, with tests, and nothing outside its scope.
+    retry:
+      max_attempts: 3
+
+  - skill: testing
+    description: Close coverage gaps the implementation left, especially failure modes.
+    retry:
+      max_attempts: 4
+
+  - skill: reviewer
+    description: Verify architectural conformance and correctness against the project's conventions.
+    retry:
+      max_attempts: 2
+    remediation:
+      skill: fixer
+      # Matches the contract's escalation rule: two full loops without
+      # convergence is a human decision, so the third cycle is the boundary.
+      max_cycles: 3
+
+  - skill: post-feature-implementation
+    description: Update affected docs, compose the PR description, open the pull request.
+    retry:
+      max_attempts: 2

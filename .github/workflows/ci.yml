@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: pip install -e .
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t tests
+      - name: Workflow validation
+        # full-review is intentionally non-runnable (security/performance have no
+        # SKILL.md), so a non-zero exit here is expected; assert the runnable ones.
+        run: |
+          python - <<'PY'
+          import json, subprocess
+          out = subprocess.run(
+              ["loom", "--project-dir", ".", "workflows", "--validate"],
+              capture_output=True, text=True,
+          ).stdout
+          data = json.loads(out)
+          by_name = {w["workflow"]: w for w in data["workflows"]}
+          for name in ("default", "hotfix", "plan-only"):
+              assert by_name[name]["valid"], f"{name} failed validation: {by_name[name]}"
+          assert not by_name["full-review"]["valid"], "full-review should be non-runnable"
+          print("workflow validation OK")
+          PY
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dev deps
+        run: pip install -e ".[dev]"
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .

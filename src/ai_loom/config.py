@@ -1,0 +1,268 @@
+"""Configuration: filesystem layout and workflow definitions.
+
+A workflow is data, not code. Adding `security-review` to a pipeline is a
+four-line YAML edit, and the engine that executes it never changes. That is the
+extensibility requirement, enforced structurally: nothing in this package
+contains a hardcoded skill name or a hardcoded ordering.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from . import yamlcompat
+from .errors import ConfigError
+from .retry import DEFAULT_MAX_REMEDIATION_CYCLES, RetryPolicy
+
+# Global ceiling on stage executions per run. A misconfigured remediation loop
+# should surface as a clear abort, not as an unbounded token spend.
+DEFAULT_MAX_TOTAL_STAGES = 40
+
+
+@dataclass(frozen=True)
+class Remediation:
+    """How a stage routes findings to a fixing skill and back.
+
+    `skill` runs when the stage reports changes requested; control then returns
+    to the stage that raised them, so the party that objected verifies the fix —
+    shared/workflow-contract.md §5.
+    """
+
+    skill: str
+    max_cycles: int = DEFAULT_MAX_REMEDIATION_CYCLES
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Remediation | None:
+        if not data:
+            return None
+        skill = data.get("skill")
+        if not skill:
+            raise ConfigError("remediation block requires a 'skill'")
+        cycles = int(data.get("max_cycles", DEFAULT_MAX_REMEDIATION_CYCLES))
+        if cycles < 1:
+            raise ConfigError("remediation.max_cycles must be at least 1")
+        return cls(skill=str(skill), max_cycles=cycles)
+
+
+@dataclass(frozen=True)
+class StageDefinition:
+    """One stage of a workflow definition."""
+
+    skill: str
+    retry: RetryPolicy = field(default_factory=RetryPolicy)
+    remediation: Remediation | None = None
+    requires_approval: bool = False
+    optional: bool = False
+    description: str = ""
+
+    @property
+    def key(self) -> str:
+        return self.skill
+
+    @classmethod
+    def from_dict(cls, data: Any) -> StageDefinition:
+        # `- coding` is shorthand for `- skill: coding` with defaults.
+        if isinstance(data, str):
+            return cls(skill=data)
+        if not isinstance(data, dict):
+            raise ConfigError(f"stage entry must be a string or mapping, got {type(data).__name__}")
+        skill = data.get("skill")
+        if not skill:
+            raise ConfigError("stage entry requires a 'skill' key")
+        return cls(
+            skill=str(skill),
+            retry=RetryPolicy.from_dict(data.get("retry")),
+            remediation=Remediation.from_dict(data.get("remediation")),
+            requires_approval=bool(data.get("requires_approval", False)),
+            optional=bool(data.get("optional", False)),
+            description=str(data.get("description", "") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class WorkflowDefinition:
+    """A named, ordered pipeline of stages."""
+
+    name: str
+    stages: tuple[StageDefinition, ...]
+    version: int = 1
+    description: str = ""
+    max_total_stages: int = DEFAULT_MAX_TOTAL_STAGES
+
+    def stage(self, skill: str) -> StageDefinition | None:
+        for stage in self.stages:
+            if stage.skill == skill:
+                return stage
+        return None
+
+    @property
+    def skills(self) -> tuple[str, ...]:
+        """Every skill the workflow can invoke, including remediation skills."""
+        names: list[str] = []
+        for stage in self.stages:
+            names.append(stage.skill)
+            if stage.remediation:
+                names.append(stage.remediation.skill)
+        return tuple(dict.fromkeys(names))
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], fallback_name: str = "") -> WorkflowDefinition:
+        if not isinstance(data, dict):
+            raise ConfigError("workflow file must contain a mapping at the top level")
+
+        # Accept both `stages:` and the flatter `workflow:` form from the design doc.
+        raw_stages = data.get("stages")
+        if raw_stages is None:
+            raw_stages = data.get("workflow")
+        if raw_stages is None:
+            raise ConfigError("workflow file must define 'stages' (or 'workflow')")
+        if not isinstance(raw_stages, list) or not raw_stages:
+            raise ConfigError("'stages' must be a non-empty list")
+
+        stages = tuple(StageDefinition.from_dict(entry) for entry in raw_stages)
+
+        seen: set[str] = set()
+        for stage in stages:
+            if stage.skill in seen:
+                raise ConfigError(
+                    f"duplicate stage {stage.skill!r}: a skill may appear once per workflow, "
+                    "because stage keys must be unique in state"
+                )
+            seen.add(stage.skill)
+
+        name = str(data.get("name") or fallback_name or "unnamed")
+        max_total = int(data.get("max_total_stages", DEFAULT_MAX_TOTAL_STAGES))
+        if max_total < len(stages):
+            raise ConfigError("max_total_stages cannot be smaller than the number of stages")
+
+        return cls(
+            name=name,
+            stages=stages,
+            version=int(data.get("version", 1)),
+            description=str(data.get("description", "") or ""),
+            max_total_stages=max_total,
+        )
+
+
+@dataclass(frozen=True)
+class Paths:
+    """Filesystem layout, resolved once and injected everywhere.
+
+    Nothing in the package calls `Path.cwd()` or reads globals; tests construct a
+    `Paths` over a temp directory and the whole system relocates.
+    """
+
+    root: Path
+    skills_dir: Path
+    workflows_dir: Path
+    state_dir: Path
+    logs_dir: Path
+    runs_dir: Path
+
+    @classmethod
+    def resolve(
+        cls,
+        project_dir: str | os.PathLike[str] | None = None,
+        *,
+        skills_dir: str | os.PathLike[str] | None = None,
+    ) -> Paths:
+        """Resolve the flat, standalone project layout.
+
+        ``workflows/``, ``skills/``, ``state/``, ``logs/`` and ``runs/`` live
+        directly under the project root. The skills directory is the one piece
+        an integration commonly relocates (a runtime may keep skills elsewhere),
+        so it is independently overridable — by argument, then the
+        ``LOOM_SKILLS_DIR`` environment variable, then a sensible default.
+        """
+        base = Path(project_dir) if project_dir else _discover_project_dir()
+        skills = cls._resolve_skills_dir(base, skills_dir)
+        return cls(
+            root=base,
+            skills_dir=skills,
+            workflows_dir=base / "workflows",
+            state_dir=base / "state",
+            logs_dir=base / "logs",
+            runs_dir=base / "runs",
+        )
+
+    @staticmethod
+    def _resolve_skills_dir(
+        base: Path, skills_dir: str | os.PathLike[str] | None
+    ) -> Path:
+        if skills_dir:
+            return Path(skills_dir)
+        env = os.environ.get("LOOM_SKILLS_DIR")
+        if env:
+            return Path(env)
+        # A repo may vendor its own `skills/`; the shipped examples otherwise
+        # provide a runnable default so a fresh clone works with no config.
+        local = base / "skills"
+        if local.is_dir():
+            return local
+        bundled = base / "examples" / "skills"
+        if bundled.is_dir():
+            return bundled
+        return local
+
+    def ensure(self) -> None:
+        for directory in (self.state_dir, self.logs_dir, self.runs_dir):
+            directory.mkdir(parents=True, exist_ok=True)
+
+    def state_file(self, run_id: str) -> Path:
+        return self.state_dir / f"{run_id}.state.json"
+
+    def log_file(self, run_id: str) -> Path:
+        return self.logs_dir / f"{run_id}.jsonl"
+
+    def run_dir(self, run_id: str) -> Path:
+        return self.runs_dir / run_id
+
+
+def _discover_project_dir() -> Path:
+    """Locate the project root.
+
+    ``LOOM_PROJECT_DIR`` wins when set; ``CLAUDE_PROJECT_DIR`` is honoured next so
+    the tool still works dropped inside a Claude Code project. Otherwise walk up
+    looking for a marker that identifies a project root.
+    """
+    for var in ("LOOM_PROJECT_DIR", "CLAUDE_PROJECT_DIR"):
+        env = os.environ.get(var)
+        if env:
+            return Path(env)
+    current = Path.cwd().resolve()
+    markers = ("workflows", ".git", "pyproject.toml", ".claude")
+    for candidate in (current, *current.parents):
+        if any((candidate / marker).exists() for marker in markers):
+            return candidate
+    return current
+
+
+def load_workflow(paths: Paths, name: str) -> WorkflowDefinition:
+    """Load a workflow by name from the workflows directory."""
+    candidates = [
+        paths.workflows_dir / f"{name}.yaml",
+        paths.workflows_dir / f"{name}.yml",
+        Path(name),
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            try:
+                data = yamlcompat.load(candidate.read_text(encoding="utf-8"))
+            except yamlcompat.YamlError as exc:
+                raise ConfigError(f"{candidate}: {exc}") from exc
+            return WorkflowDefinition.from_dict(data or {}, fallback_name=candidate.stem)
+
+    available = sorted(p.stem for p in paths.workflows_dir.glob("*.y*ml")) if paths.workflows_dir.is_dir() else []
+    raise ConfigError(
+        f"workflow {name!r} not found in {paths.workflows_dir}. "
+        f"Available: {', '.join(available) if available else 'none'}"
+    )
+
+
+def list_workflows(paths: Paths) -> list[str]:
+    if not paths.workflows_dir.is_dir():
+        return []
+    return sorted({p.stem for p in paths.workflows_dir.glob("*.y*ml")})

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Launcher for ai-loom (the AI skill orchestrator).
+#
+# Runs from anywhere: resolves its own location, puts the package (under src/)
+# on PYTHONPATH, and pins the project directory so `Paths.resolve` never has to
+# guess. Prefer the installed `loom` console command; this launcher exists so the
+# repo also runs straight from a checkout with no install step.
+#
+#   bin/orchestrator start TASK-1 --workflow default
+#
+# Honour CLAUDE_PROJECT_DIR / LOOM_PROJECT_DIR when set; otherwise the project
+# directory is the repo root (one level above bin/), where workflows/, skills/,
+# state/, logs/ and runs/ live.
+set -euo pipefail
+
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+repo_root=$(dirname -- "$here")
+project_dir="${LOOM_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$repo_root}}"
+
+python=${PYTHON:-python3}
+if ! command -v "$python" >/dev/null 2>&1; then
+    echo "loom: $python not found on PATH" >&2
+    exit 1
+fi
+
+export PYTHONPATH="$repo_root/src${PYTHONPATH:+:$PYTHONPATH}"
+exec "$python" -m ai_loom --project-dir "$project_dir" "$@"

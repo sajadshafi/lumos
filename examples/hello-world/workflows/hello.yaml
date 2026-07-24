@@ -1,0 +1,18 @@
+# The smallest useful chain: one skill drafts, one reviews. Enough to watch a run
+# advance through two stages, produce two reports, and finish — with no external
+# tracker and no real codebase.
+version: 1
+name: hello
+description: A two-step draft-then-review chain for learning the loop.
+max_total_stages: 6
+
+stages:
+  - skill: draft
+    description: Produce a first draft of the requested change.
+    retry:
+      max_attempts: 2
+
+  - skill: review
+    description: Check the draft and either accept it or send it back.
+    retry:
+      max_attempts: 2

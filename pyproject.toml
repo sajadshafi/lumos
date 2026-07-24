@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-loom"
+version = "0.1.0"
+description = "A deterministic engine for sequencing AI skills into reliable engineering workflows."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = ["ai", "agents", "orchestration", "workflow", "skills", "llm", "pipeline"]
+authors = [{ name = "ai-loom contributors" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+]
+# The engine runs on the standard library alone. PyYAML is used when present and
+# is otherwise replaced by a bundled block-style parser (see yamlcompat.py).
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["PyYAML>=5.1"]
+dev = ["ruff>=0.5"]
+
+[project.urls]
+Homepage = "https://github.com/your-org/ai-loom"
+Documentation = "https://github.com/your-org/ai-loom/tree/main/docs"
+Issues = "https://github.com/your-org/ai-loom/issues"
+
+[project.scripts]
+loom = "ai_loom.cli:main_cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_loom"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures deliberately manipulate sys.path before importing the package.
+"tests/*" = ["E402"]
+# The package sets __version__ / CONTRACT_VERSION before its re-export imports.
+"src/ai_loom/__init__.py" = ["E402"]
