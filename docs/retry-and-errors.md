@@ -166,13 +166,13 @@ achieved:
 
 - Completed stages keep `completed` status, deliverables, decisions, and risks.
 - Every report and envelope remains under `runs/<run-id>/`.
-- `loom summary` reports what shipped *and* what did not.
+- `lumos summary` reports what shipped *and* what did not.
 
-To continue after resolving a blocker, re-run `loom next` — the queue was
+To continue after resolving a blocker, re-run `lumos next` — the queue was
 cleared when the run terminated, so resuming a blocked run is a deliberate act:
 
 ```bash
-loom start TASK-17 --force     # fresh run, prior artifacts retained on disk
+lumos start TASK-17 --force     # fresh run, prior artifacts retained on disk
 ```
 
 `--force` is never used automatically. Restarting a failed run to get a cleaner
@@ -183,7 +183,7 @@ result destroys the evidence of why it failed.
 ## 9. Cancellation
 
 ```bash
-loom cancel TASK-17 --reason "requirements changed"
+lumos cancel TASK-17 --reason "requirements changed"
 ```
 
 Clears the queue, records the reason as an unrecoverable error, and marks the run

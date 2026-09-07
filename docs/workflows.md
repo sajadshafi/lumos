@@ -14,16 +14,14 @@ rather than a code change.
 | `default` | planner → coding → testing → reviewer ⇄ fixer → PR | yes | Normal feature delivery |
 | `hotfix` | coding → testing → reviewer ⇄ fixer → PR | yes | A defect with a known cause |
 | `plan-only` | planner | yes | Scoping and estimation |
-| `full-review` | + security, performance, approval gate | **no** — needs two skills | Schema, auth, PII, hot paths |
+| `full-review` | + security, performance, approval gate | yes | Schema, auth, PII, hot paths |
 
 ```bash
-loom workflows --validate
+lumos workflows --validate
 ```
 
-`full-review` reports `security` and `performance` as inert, because those
-directories hold READMEs but no `SKILL.md`. That failure is intentional: the file
-is checked in as the executable specification of what those skills must satisfy,
-and as proof that adding a stage requires no orchestrator change.
+`full-review` includes runnable security and performance checks, then pauses at
+its declared human approval gate before PR creation.
 
 ---
 
@@ -126,7 +124,7 @@ run terminates as `escalated` with the disagreement recorded.
 The engine returns `await_approval` and stops. Nothing proceeds until:
 
 ```bash
-loom approve TASK-17 --stage post-feature-implementation
+lumos approve TASK-17 --stage post-feature-implementation
 ```
 
 The orchestrator skill is explicitly forbidden from approving on the user's
@@ -193,8 +191,8 @@ stages:
 ```
 
 ```bash
-loom validate secure-delivery
-loom start TASK-19 --workflow secure-delivery
+lumos validate secure-delivery
+lumos start TASK-19 --workflow secure-delivery
 ```
 
 No orchestrator code changed. That is the extensibility requirement, demonstrated
@@ -202,7 +200,7 @@ rather than asserted.
 
 > **Block style only.** The bundled fallback YAML parser does not support inline
 > flow collections (`retry: { max_attempts: 2 }`). It rejects them with an
-> explicit message rather than mis-parsing, and `loom validate` surfaces
+> explicit message rather than mis-parsing, and `lumos validate` surfaces
 > that immediately. Install PyYAML if you want flow style.
 
 ---

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Launcher for ai-loom (the AI skill orchestrator).
+# Compatibility launcher for Lumos.
 #
 # Runs from anywhere: resolves its own location, puts the package (under src/)
 # on PYTHONPATH, and pins the project directory so `Paths.resolve` never has to
 # guess. Prefer the installed `loom` console command; this launcher exists so the
 # repo also runs straight from a checkout with no install step.
 #
-#   bin/orchestrator start TASK-1 --workflow default
+#   bin/orchestrator start TASK-1 --workflow default  # legacy alias
 #
 # Honour CLAUDE_PROJECT_DIR / LOOM_PROJECT_DIR when set; otherwise the project
 # directory is the repo root (one level above bin/), where workflows/, skills/,

@@ -1,22 +1,22 @@
-"""AI skill orchestration layer.
+"""Lumos spec-driven orchestration engine.
 
-A lightweight, deterministic workflow engine for coordinating AI-authored skills
+A lightweight, deterministic workflow engine for coordinating AI-authored workers
 through an engineering pipeline — plan, implement, test, review, remediate, ship
 — independent of any particular agent runtime.
 
 The orchestrator coordinates. It never implements: no module here writes
-production source, and the only skills permitted to do so are named in the
+production source, and the only workers permitted to do so are named in the
 workflow definition, not in this package.
 
-Entry point: `python3 -m ai_loom --help` (or the installed `loom` command).
+Entry point: `python3 -m lumos --help` (or the installed `lumos` command).
 """
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 CONTRACT_VERSION = "1.0.0"
 
-from .config import Paths, StageDefinition, WorkflowDefinition, load_workflow
+from .config import LumosConfig, Paths, StageDefinition, WorkflowDefinition, load_project_config, load_workflow
 from .engine import Engine
 from .errors import (
     ConfigError,
@@ -36,7 +36,7 @@ from .models import (
     WorkUnit,
 )
 from .retry import RetryPolicy
-from .skill_runner import SkillRunner
+from .skill_runner import SkillRunner, WorkerRunner
 from .state_manager import StateManager
 
 __all__ = [
@@ -49,9 +49,11 @@ __all__ = [
     "Engine",
     "OrchestratorError",
     "Paths",
+    "LumosConfig",
     "RetryPolicy",
     "SkillNotFoundError",
     "SkillRunner",
+    "WorkerRunner",
     "StageDefinition",
     "StageStatus",
     "StateError",
@@ -63,4 +65,5 @@ __all__ = [
     "WorkflowState",
     "WorkflowStatus",
     "load_workflow",
+    "load_project_config",
 ]

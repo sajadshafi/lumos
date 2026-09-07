@@ -12,7 +12,7 @@ starting point for your own — they are the reference implementation of the
 | [`reviewer`](reviewer/) | Verify the change; route defects to `fixer` | no |
 | [`fixer`](fixer/) | Apply targeted remediation for review findings | **yes** |
 | [`post-feature-implementation`](post-feature-implementation/) | Update docs, compose the PR | no |
-| [`security`](security/), [`performance`](performance/) | Placeholders — a README, no `SKILL.md` | — |
+| [`security`](security/), [`performance`](performance/) | Dedicated review gates | no |
 
 ## Conventions
 
@@ -20,7 +20,7 @@ starting point for your own — they are the reference implementation of the
   the `name` in its `SKILL.md` frontmatter.
 - A directory **with** a `SKILL.md` is invokable; **without** one it is inert
   (discovered and reported, so a workflow that names it fails with an
-  explanation). `security/` and `performance/` are deliberately inert.
+  explanation).
 - `shared/` (one level up) holds the contract docs, not a skill, and is excluded
   from discovery.
 - Each real skill should ship an `examples/input.md` + `examples/output.md` pair;

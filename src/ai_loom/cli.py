@@ -13,24 +13,32 @@ Exit codes are meaningful:
 
 The whole loop is:
 
-    loom start TASK-17 --workflow default
-    loom next  TASK-17               -> directive JSON + input envelope
-    <agent invokes the named skill, writes its report to the given path>
-    loom record TASK-17 --stage coding --report <path>   -> next directive
+    lumos start TASK-17 --workflow default
+    lumos next  TASK-17               -> directive JSON + input envelope
+    <runtime invokes the named worker, writes its report to the given path>
+    lumos record TASK-17 --stage coding --report <path>   -> next directive
     ... repeat ...
-    loom summary TASK-17
+    lumos summary TASK-17
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .config import Paths, list_workflows, load_workflow
+from .config import (
+    Paths,
+    list_workflows,
+    load_project_config,
+    load_workflow,
+    normalize_work_item,
+)
 from .engine import Engine
 from .errors import OrchestratorError
 from .logging_ import RunLogger, iter_events, render_timeline
@@ -44,8 +52,8 @@ from .summary import render_final_summary, render_state_yaml, render_status
 # project-specific rules (a house style, a UI kit, an SDK) belong in that file,
 # which `--constraints-file` can also override per run.
 BUILTIN_CONSTRAINTS = """\
-- Obey the write boundary declared in your SKILL.md without exception: only the
-  skills a workflow authorises may modify source, tests, or docs.
+- Obey the write boundary declared in your SKILL.md or AGENT.md: only workers a
+  workflow authorises may modify source, tests, or docs.
 - Emit the six-section report contract in order: Summary, Findings, Decisions,
   Deliverables, Risks, Next Skill.
 - Keep every factual claim in Findings sourced to a path, symbol, command output,
@@ -72,25 +80,30 @@ def _load_constraints(paths: Paths, override_file: str | None) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="loom",
-        description="Coordinate AI skills through a deterministic engineering workflow.",
+        prog="lumos",
+        description="Run AI skills and agents through deterministic spec-driven workflows.",
     )
-    parser.add_argument("--version", action="version", version=f"loom {__version__}")
+    parser.add_argument("--version", action="version", version=f"lumos {__version__}")
     parser.add_argument(
         "--project-dir",
         default=None,
-        help="project root (defaults to $LOOM_PROJECT_DIR, then $CLAUDE_PROJECT_DIR, then discovery)",
+        help="project root (defaults to $LUMOS_PROJECT_DIR, legacy $LOOM_PROJECT_DIR, then discovery)",
     )
     parser.add_argument(
         "--skills-dir",
         default=None,
-        help="directory of skills (defaults to $LOOM_SKILLS_DIR, then ./skills, then examples/skills)",
+        help="directory of skills (defaults to $LUMOS_SKILLS_DIR, then ./skills, then examples/skills)",
+    )
+    parser.add_argument(
+        "--agents-dir",
+        default=None,
+        help="directory of agents (defaults to $LUMOS_AGENTS_DIR, then ./agents, then examples/agents)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
     start = sub.add_parser("start", help="create or resume a run for a work item")
     start.add_argument("work_item")
-    start.add_argument("--workflow", default="default")
+    start.add_argument("--workflow", default=None, help="workflow name (defaults to lumos.yaml)")
     start.add_argument("--title", default="")
     start.add_argument("--type", dest="item_type", default="")
     start.add_argument("--state", dest="item_state", default="")
@@ -113,11 +126,11 @@ def build_parser() -> argparse.ArgumentParser:
     nxt.add_argument("--objective", default="", help="override the objective block")
     nxt.add_argument("--constraints-file", default=None)
 
-    record = sub.add_parser("record", help="record a completed skill invocation")
+    record = sub.add_parser("record", help="record a completed worker invocation")
     record.add_argument("run")
     record.add_argument("--stage", required=True)
-    record.add_argument("--report", default=None, help="path to the skill's six-section report")
-    record.add_argument("--failed", action="store_true", help="the skill could not run at all")
+    record.add_argument("--report", default=None, help="path to the worker's six-section report")
+    record.add_argument("--failed", action="store_true", help="the worker could not run at all")
     record.add_argument("--error", default="", help="failure detail when --failed is used")
 
     for name, help_text in (
@@ -144,12 +157,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("runs", help="list known runs")
     sub.add_parser("skills", help="list discovered skills")
+    sub.add_parser("agents", help="list discovered agents")
+    sub.add_parser("workers", help="list all discovered skills and agents")
 
     workflows = sub.add_parser("workflows", help="list workflow definitions")
-    workflows.add_argument("--validate", action="store_true", help="check every workflow against installed skills")
+    workflows.add_argument("--validate", action="store_true", help="check every workflow against installed workers")
 
     validate = sub.add_parser("validate", help="validate one workflow definition")
     validate.add_argument("workflow")
+
+    install = sub.add_parser("install", help="install the /lumos skill into an AI runtime")
+    install.add_argument("runtime", choices=("codex", "claude"))
+    install.add_argument("--destination", default=None, help="override the runtime skill directory")
+    install.add_argument("--force", action="store_true", help="replace an existing Lumos skill")
 
     return parser
 
@@ -173,6 +193,11 @@ def _engine(paths: Paths, run_id: str) -> Engine:
     )
 
 
+def _run_id(paths: Paths, reference: str) -> str:
+    config = load_project_config(paths)
+    return StateManager.run_id_for(normalize_work_item(reference, config.ticket_prefix))
+
+
 def _emit_json(payload: dict[str, Any]) -> None:
     json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
     sys.stdout.write("\n")
@@ -192,22 +217,24 @@ def _terminal_exit_code(state: WorkflowState) -> int:
 
 def cmd_start(args: argparse.Namespace, paths: Paths) -> int:
     paths.ensure()
-    definition = load_workflow(paths, args.workflow)
+    config = load_project_config(paths)
+    definition = load_workflow(paths, args.workflow or config.default_workflow)
 
     runner = SkillRunner(paths)
-    problems = runner.validate_workflow(definition.skills)
+    problems = runner.validate_workers(definition.workers)
     if problems:
         _emit_json(
             {
                 "ok": False,
-                "error": "workflow references skills that cannot be invoked",
+                "error": "workflow references workers that cannot be invoked",
                 "problems": problems,
             }
         )
         return 1
 
     manager = StateManager(paths)
-    run_id = manager.run_id_for(args.work_item)
+    work_item = normalize_work_item(args.work_item, config.ticket_prefix)
+    run_id = manager.run_id_for(work_item)
     if args.force:
         manager.delete(run_id)
 
@@ -219,7 +246,7 @@ def cmd_start(args: argparse.Namespace, paths: Paths) -> int:
         metadata[key.strip()] = value.strip()
 
     item = WorkItem(
-        id=args.work_item,
+        id=work_item,
         title=args.title,
         type=args.item_type,
         state=args.item_state,
@@ -228,16 +255,14 @@ def cmd_start(args: argparse.Namespace, paths: Paths) -> int:
         url=args.url,
         metadata=metadata,
     )
-    state, resumed = manager.load_or_create(
-        item, definition, branch=args.branch, repository=args.repository
-    )
+    state, resumed = manager.load_or_create(item, definition, branch=args.branch, repository=args.repository)
     logger = RunLogger(paths.log_file(state.run_id), state.run_id)
     logger.emit(
         "workflow_resumed" if resumed else "workflow_started",
         status=state.status,
         detail={
             "workflow": definition.name,
-            "stages": [s.skill for s in definition.stages],
+            "stages": [f"{s.kind}:{s.worker}" for s in definition.stages],
             "work_item": item.id,
         },
     )
@@ -249,6 +274,7 @@ def cmd_start(args: argparse.Namespace, paths: Paths) -> int:
             "workflow": definition.name,
             "stages": list(state.order),
             "status": state.status,
+            "execution_mode": config.execution_mode,
             "state_file": str(paths.state_file(state.run_id)),
             "log_file": str(paths.log_file(state.run_id)),
         }
@@ -257,11 +283,12 @@ def cmd_start(args: argparse.Namespace, paths: Paths) -> int:
 
 
 def cmd_next(args: argparse.Namespace, paths: Paths) -> int:
-    engine = _engine(paths, StateManager.run_id_for(args.run))
+    engine = _engine(paths, _run_id(paths, args.run))
     directive = engine.next_directive()
     payload = directive.to_dict()
+    payload["execution_mode"] = load_project_config(paths).execution_mode
 
-    if directive.action == Action.INVOKE_SKILL.value and directive.stage_key:
+    if directive.action in (Action.INVOKE_SKILL.value, Action.INVOKE_AGENT.value) and directive.stage_key:
         stage = engine.state.require_stage(directive.stage_key)
         stage_def = engine.definition_for(directive.stage_key)
 
@@ -289,7 +316,12 @@ def cmd_next(args: argparse.Namespace, paths: Paths) -> int:
         payload.update(
             {
                 "attempt": request.attempt,
-                "skill_command": f"/{stage_def.skill}",
+                "worker": stage_def.worker,
+                "worker_type": stage_def.kind,
+                "skill_command": f"/{stage_def.skill}" if stage_def.kind == "skill" else None,
+                "agent_path": str(engine.runner.get(stage_def.worker, "agent").path)
+                if stage_def.kind == "agent"
+                else None,
                 "envelope_path": str(envelope),
                 "report_path": str(report_path),
                 "envelope": request.render(),
@@ -304,7 +336,7 @@ def cmd_next(args: argparse.Namespace, paths: Paths) -> int:
 
 
 def cmd_record(args: argparse.Namespace, paths: Paths) -> int:
-    run_id = StateManager.run_id_for(args.run)
+    run_id = _run_id(paths, args.run)
     engine = _engine(paths, run_id)
 
     stage = engine.state.stage(args.stage)
@@ -319,7 +351,7 @@ def cmd_record(args: argparse.Namespace, paths: Paths) -> int:
             stage_key=args.stage,
             attempt=attempt_number,
             verdict=Verdict.FAILED,
-            error=args.error or "skill invocation failed",
+            error=args.error or "worker invocation failed",
         )
     else:
         if not args.report:
@@ -373,19 +405,19 @@ def cmd_record(args: argparse.Namespace, paths: Paths) -> int:
 
 
 def cmd_status(args: argparse.Namespace, paths: Paths) -> int:
-    state = StateManager(paths).load(StateManager.run_id_for(args.run))
+    state = StateManager(paths).load(_run_id(paths, args.run))
     print(render_status(state))
     return _terminal_exit_code(state)
 
 
 def cmd_state(args: argparse.Namespace, paths: Paths) -> int:
-    state = StateManager(paths).load(StateManager.run_id_for(args.run))
+    state = StateManager(paths).load(_run_id(paths, args.run))
     print(render_state_yaml(state), end="")
     return 0
 
 
 def cmd_summary(args: argparse.Namespace, paths: Paths) -> int:
-    run_id = StateManager.run_id_for(args.run)
+    run_id = _run_id(paths, args.run)
     state = StateManager(paths).load(run_id)
     events = list(iter_events(paths.log_file(run_id)))
     print(render_final_summary(state, events), end="")
@@ -393,27 +425,27 @@ def cmd_summary(args: argparse.Namespace, paths: Paths) -> int:
 
 
 def cmd_timeline(args: argparse.Namespace, paths: Paths) -> int:
-    run_id = StateManager.run_id_for(args.run)
+    run_id = _run_id(paths, args.run)
     print(render_timeline(list(iter_events(paths.log_file(run_id)))))
     return 0
 
 
 def cmd_approve(args: argparse.Namespace, paths: Paths) -> int:
-    engine = _engine(paths, StateManager.run_id_for(args.run))
+    engine = _engine(paths, _run_id(paths, args.run))
     directive = engine.approve(args.stage)
     _emit_json({"ok": True, "directive": directive.to_dict()})
     return 0
 
 
 def cmd_skip(args: argparse.Namespace, paths: Paths) -> int:
-    engine = _engine(paths, StateManager.run_id_for(args.run))
+    engine = _engine(paths, _run_id(paths, args.run))
     directive = engine.skip(args.stage, args.reason)
     _emit_json({"ok": True, "directive": directive.to_dict()})
     return 0
 
 
 def cmd_cancel(args: argparse.Namespace, paths: Paths) -> int:
-    engine = _engine(paths, StateManager.run_id_for(args.run))
+    engine = _engine(paths, _run_id(paths, args.run))
     directive = engine.cancel(args.reason)
     _emit_json({"ok": True, "directive": directive.to_dict()})
     return 0
@@ -458,6 +490,44 @@ def cmd_skills(args: argparse.Namespace, paths: Paths) -> int:
     return 0
 
 
+def cmd_agents(args: argparse.Namespace, paths: Paths) -> int:
+    discovered = SkillRunner(paths).discover_agents()
+    _emit_json(
+        {
+            "ok": True,
+            "agents_dir": str(paths.agents_dir),
+            "agents": [
+                {"name": m.name, "invokable": m.invokable, "description": m.description, "path": str(m.path)}
+                for m in discovered.values()
+            ],
+        }
+    )
+    return 0
+
+
+def cmd_workers(args: argparse.Namespace, paths: Paths) -> int:
+    runner = SkillRunner(paths)
+    skills = runner.discover()
+    agents = runner.discover_agents()
+    _emit_json(
+        {
+            "ok": True,
+            "workers": [
+                {
+                    "type": kind,
+                    "name": m.name,
+                    "invokable": m.invokable,
+                    "description": m.description,
+                    "path": str(m.path),
+                }
+                for kind, group in (("skill", skills), ("agent", agents))
+                for m in group.values()
+            ],
+        }
+    )
+    return 0
+
+
 def cmd_workflows(args: argparse.Namespace, paths: Paths) -> int:
     names = list_workflows(paths)
     if not args.validate:
@@ -474,13 +544,13 @@ def cmd_workflows(args: argparse.Namespace, paths: Paths) -> int:
             ok = False
             results.append({"workflow": name, "valid": False, "problems": [str(exc)]})
             continue
-        problems = runner.validate_workflow(definition.skills)
+        problems = runner.validate_workers(definition.workers)
         ok = ok and not problems
         results.append(
             {
                 "workflow": name,
                 "valid": not problems,
-                "stages": [s.skill for s in definition.stages],
+                "stages": [{"id": s.key, "type": s.kind, "worker": s.worker} for s in definition.stages],
                 "problems": problems,
             }
         )
@@ -490,7 +560,7 @@ def cmd_workflows(args: argparse.Namespace, paths: Paths) -> int:
 
 def cmd_validate(args: argparse.Namespace, paths: Paths) -> int:
     definition = load_workflow(paths, args.workflow)
-    problems = SkillRunner(paths).validate_workflow(definition.skills)
+    problems = SkillRunner(paths).validate_workers(definition.workers)
     _emit_json(
         {
             "ok": not problems,
@@ -500,6 +570,8 @@ def cmd_validate(args: argparse.Namespace, paths: Paths) -> int:
             "stages": [
                 {
                     "skill": s.skill,
+                    "worker": s.worker,
+                    "type": s.kind,
                     "max_attempts": s.retry.max_attempts,
                     "remediation": s.remediation.skill if s.remediation else None,
                     "max_cycles": s.remediation.max_cycles if s.remediation else None,
@@ -512,6 +584,35 @@ def cmd_validate(args: argparse.Namespace, paths: Paths) -> int:
         }
     )
     return 0 if not problems else 1
+
+
+def cmd_install(args: argparse.Namespace, paths: Paths) -> int:
+    if args.destination:
+        destination = Path(args.destination).expanduser()
+    elif args.runtime == "codex":
+        codex_home = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
+        destination = codex_home / "skills" / "lumos"
+    else:
+        destination = Path.home() / ".claude" / "skills" / "lumos"
+
+    skill_file = destination / "SKILL.md"
+    if skill_file.exists() and not args.force:
+        _emit_json(
+            {
+                "ok": False,
+                "error": f"Lumos is already installed at {destination}; use --force to update it",
+            }
+        )
+        return 1
+
+    source = resources.files("ai_loom").joinpath("resources", "lumos")
+    destination.joinpath("agents").mkdir(parents=True, exist_ok=True)
+    skill_file.write_text(source.joinpath("SKILL.md").read_text(encoding="utf-8"), encoding="utf-8")
+    destination.joinpath("agents", "openai.yaml").write_text(
+        source.joinpath("agents", "openai.yaml").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    _emit_json({"ok": True, "runtime": args.runtime, "installed": str(destination)})
+    return 0
 
 
 COMMANDS = {
@@ -527,19 +628,21 @@ COMMANDS = {
     "cancel": cmd_cancel,
     "runs": cmd_runs,
     "skills": cmd_skills,
+    "agents": cmd_agents,
+    "workers": cmd_workers,
     "workflows": cmd_workflows,
     "validate": cmd_validate,
+    "install": cmd_install,
 }
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    paths = Paths.resolve(args.project_dir, skills_dir=args.skills_dir)
+    paths = Paths.resolve(args.project_dir, skills_dir=args.skills_dir, agents_dir=args.agents_dir)
     try:
         return COMMANDS[args.command](args, paths)
     except OrchestratorError as exc:
-        _emit_json({"ok": False, "error": str(exc), "error_type": type(exc).__name__,
-                    "recoverable": exc.recoverable})
+        _emit_json({"ok": False, "error": str(exc), "error_type": type(exc).__name__, "recoverable": exc.recoverable})
         return 1
 
 

@@ -64,9 +64,7 @@ class PersistenceTests(OrchestratorTestCase):
 
         # Simulate process death: nothing survives but the state file.
         definition = load_workflow(self.paths, "default")
-        resumed, was_resumed = self.manager.load_or_create(
-            WorkItem(id="AB#273"), definition, branch="feat/273-test"
-        )
+        resumed, was_resumed = self.manager.load_or_create(WorkItem(id="AB#273"), definition, branch="feat/273-test")
         self.assertTrue(was_resumed)
         self.assertEqual(resumed.pending_queue[0], "testing")
         self.assertEqual(resumed.require_stage("coding").status, StageStatus.COMPLETED.value)
@@ -80,7 +78,7 @@ class PersistenceTests(OrchestratorTestCase):
     def test_missing_state_is_an_actionable_error(self):
         with self.assertRaises(StateError) as ctx:
             self.manager.load("AB-999")
-        self.assertIn("orchestrator start", str(ctx.exception))
+        self.assertIn("lumos start", str(ctx.exception))
 
     def test_corrupt_state_is_reported_not_swallowed(self):
         engine = self.make_engine()

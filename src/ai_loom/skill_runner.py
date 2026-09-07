@@ -37,12 +37,13 @@ _FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 @dataclass(frozen=True)
 class SkillMetadata:
-    """What the runner knows about an installed skill."""
+    """What the runner knows about an installed skill or agent."""
 
     name: str
     description: str
     path: Path
     invokable: bool
+    worker_type: str = "skill"
 
     @property
     def command(self) -> str:
@@ -55,6 +56,7 @@ class InvocationRequest:
     defined in shared/workflow-contract.md §1."""
 
     skill: str
+    worker_type: str
     stage_key: str
     attempt: int
     max_attempts: int
@@ -96,11 +98,16 @@ class InvocationResult:
 
 
 class SkillRunner:
-    """Discovery, envelope construction, and report validation for skills."""
+    """Discovery, envelope construction, and validation for skills and agents.
+
+    The historical class name remains public for compatibility; Lumos treats both
+    resource types as workers and exposes their type in every directive.
+    """
 
     def __init__(self, paths: Paths) -> None:
         self._paths = paths
         self._cache: dict[str, SkillMetadata] = {}
+        self._agent_cache: dict[str, SkillMetadata] = {}
 
     # ------------------------------------------------------------------ #
     # Discovery
@@ -137,19 +144,57 @@ class SkillRunner:
         self._cache = found
         return found
 
-    def get(self, skill: str) -> SkillMetadata:
-        if not self._cache:
-            self.discover()
-        meta = self._cache.get(skill)
-        if meta is None:
-            available = ", ".join(sorted(n for n, m in self._cache.items() if m.invokable)) or "none"
-            raise SkillNotFoundError(
-                f"skill {skill!r} not found in {self._paths.skills_dir}. Invokable skills: {available}"
+    def discover_agents(self) -> dict[str, SkillMetadata]:
+        """Discover ``agents/<name>/AGENT.md`` and flat ``agents/<name>.md`` files."""
+        found: dict[str, SkillMetadata] = {}
+        root = self._paths.agents_dir
+        if not root.is_dir():
+            return found
+        for entry in sorted(root.iterdir()):
+            if entry.name.startswith(".") or entry.name == "__pycache__":
+                continue
+            if entry.is_dir():
+                agent_file = entry / "AGENT.md"
+                name = entry.name
+            elif entry.suffix.lower() == ".md":
+                agent_file = entry
+                name = entry.stem
+            else:
+                continue
+            invokable = agent_file.is_file()
+            meta = _read_frontmatter(agent_file) if invokable else {}
+            found[name] = SkillMetadata(
+                name=str(meta.get("name", name)),
+                description=str(meta.get("description", "")),
+                path=agent_file if invokable else entry,
+                invokable=invokable,
+                worker_type="agent",
             )
+        self._agent_cache = found
+        return found
+
+    def get(self, skill: str, worker_type: str = "skill") -> SkillMetadata:
+        if worker_type == "agent":
+            if not self._agent_cache:
+                self.discover_agents()
+            meta = self._agent_cache.get(skill)
+            root = self._paths.agents_dir
+            label = "agent"
+            cache = self._agent_cache
+        else:
+            if not self._cache:
+                self.discover()
+            meta = self._cache.get(skill)
+            root = self._paths.skills_dir
+            label = "skill"
+            cache = self._cache
+        if meta is None:
+            available = ", ".join(sorted(n for n, m in cache.items() if m.invokable)) or "none"
+            raise SkillNotFoundError(f"{label} {skill!r} not found in {root}. Invokable {label}s: {available}")
         if not meta.invokable:
             raise SkillNotFoundError(
-                f"skill {skill!r} exists at {meta.path} but has no SKILL.md, so it is inert. "
-                "Write its SKILL.md or remove it from the workflow definition."
+                f"{label} {skill!r} exists at {meta.path} but has no "
+                f"{'AGENT.md' if worker_type == 'agent' else 'SKILL.md'}, so it is inert."
             )
         return meta
 
@@ -167,6 +212,18 @@ class SkillRunner:
                 problems.append(f"{name}: no directory under {self._paths.skills_dir}")
             elif not meta.invokable:
                 problems.append(f"{name}: directory exists but has no SKILL.md (inert)")
+        return problems
+
+    def validate_workers(self, workers: tuple[tuple[str, str], ...]) -> list[str]:
+        """Pre-flight every typed worker referenced by a workflow."""
+        self.discover()
+        self.discover_agents()
+        problems: list[str] = []
+        for worker_type, name in workers:
+            try:
+                self.get(name, worker_type)
+            except SkillNotFoundError as exc:
+                problems.append(str(exc))
         return problems
 
     # ------------------------------------------------------------------ #
@@ -187,7 +244,7 @@ class SkillRunner:
         the contract is explicit that a skill given a paraphrase re-derives the
         repository state and drifts from the plan it is meant to implement.
         """
-        self.get(definition.skill)  # fail fast if the skill is missing or inert
+        self.get(definition.worker, definition.kind)  # fail fast if the worker is missing or inert
 
         item = state.work_item
         objective = objective_override or (
@@ -230,6 +287,7 @@ class SkillRunner:
 
         request = InvocationRequest(
             skill=definition.skill,
+            worker_type=definition.kind,
             stage_key=stage.key,
             attempt=stage.attempt_count + 1,
             max_attempts=definition.retry.max_attempts,
@@ -278,8 +336,7 @@ class SkillRunner:
                 report=report,
                 report_path=report_path,
                 violations=list(report.violations),
-                error="report does not conform to the output contract: "
-                + "; ".join(report.violations),
+                error="report does not conform to the output contract: " + "; ".join(report.violations),
             )
         return InvocationResult(
             skill=skill,
@@ -365,3 +422,7 @@ def _read_frontmatter(path: Path) -> dict[str, Any]:
             value = value[1:-1]
         data[key.strip()] = value
     return data
+
+
+# Public name for new integrations. Keep SkillRunner for the 0.1 API.
+WorkerRunner = SkillRunner

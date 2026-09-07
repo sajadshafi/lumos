@@ -73,9 +73,10 @@ class Engine:
             origin_def = self.definition.stage(origin)
             remediation = origin_def.remediation if origin_def else None
             skill = remediation.skill if remediation else base
+            kind = remediation.kind if remediation else "skill"
             retry = origin_def.retry if origin_def else StageDefinition(skill=skill).retry
-            return StageDefinition(skill=skill, retry=retry)
-        found = self.definition.stage(base)
+            return StageDefinition(skill=skill, kind=kind, retry=retry)
+        found = self.definition.stage(stage_key)
         if found is None:
             # A stage present in state but absent from the definition — the
             # workflow was edited mid-run. Run it with defaults and let the
@@ -136,16 +137,19 @@ class Engine:
                 max_attempts=stage_def.retry.max_attempts,
                 reason=(
                     f"stage '{stage_key}' is a manual approval point. "
-                    f"Approve with: orchestrator approve {state.run_id} --stage {stage_key}"
+                    f"Approve with: lumos approve {state.run_id} --stage {stage_key}"
                 ),
                 workflow_status=WorkflowStatus.AWAITING_APPROVAL.value,
             )
 
+        action = Action.INVOKE_AGENT if stage_def.kind == "agent" else Action.INVOKE_SKILL
         return Directive(
-            action=Action.INVOKE_SKILL.value,
+            action=action.value,
             run_id=state.run_id,
             stage_key=stage_key,
             skill=stage_def.skill,
+            worker=stage_def.worker,
+            worker_type=stage_def.kind,
             attempt=stage.attempt_count + 1,
             max_attempts=stage_def.retry.max_attempts,
             reason=stage_def.description or f"next stage in workflow '{self.definition.name}'",
@@ -250,9 +254,7 @@ class Engine:
                 detail={"returns_to": stage.returns_to},
             )
 
-    def _on_changes_requested(
-        self, stage: Stage, stage_def: StageDefinition, result: InvocationResult
-    ) -> None:
+    def _on_changes_requested(self, stage: Stage, stage_def: StageDefinition, result: InvocationResult) -> None:
         origin_def = self.definition.stage(stage.key)
         remediation = origin_def.remediation if origin_def else None
 
@@ -290,7 +292,11 @@ class Engine:
 
         remediation_key = f"{remediation.skill}{REMEDIATION_SEPARATOR}{stage.key}"
         self.state_manager.add_stage(
-            self.state, remediation_key, remediation.skill, returns_to=stage.key
+            self.state,
+            remediation_key,
+            remediation.skill,
+            worker_type=remediation.kind,
+            returns_to=stage.key,
         )
         # Queue both halves of the loop now — fixer, then the origin stage to
         # re-verify. Deferring the re-review until the fixer succeeds would leave
@@ -423,7 +429,10 @@ class Engine:
         self._pop(stage_key)
         self.state_manager.save(self.state)
         self.logger.emit(
-            "stage_skipped", stage=stage_key, skill=stage.skill, status=StageStatus.SKIPPED.value,
+            "stage_skipped",
+            stage=stage_key,
+            skill=stage.skill,
+            status=StageStatus.SKIPPED.value,
             detail={"reason": reason},
         )
         return self.next_directive()

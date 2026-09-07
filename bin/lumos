@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Run Lumos directly from a checkout without installing it.
+set -eu
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+project_dir=${LUMOS_PROJECT_DIR:-$(dirname -- "$script_dir")}
+python_bin=${PYTHON:-python3}
+
+PYTHONPATH="$project_dir/src${PYTHONPATH:+:$PYTHONPATH}" \
+  exec "$python_bin" -m lumos --project-dir "$project_dir" "$@"
+

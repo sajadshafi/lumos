@@ -1,0 +1,11 @@
+version: 1
+default_workflow: default
+
+ticket:
+  prefix: TC
+
+execution:
+  # Runtime drivers continue until completion, a terminal error, or an explicit
+  # human approval gate. Use "step" only for interactive debugging.
+  mode: continuous
+

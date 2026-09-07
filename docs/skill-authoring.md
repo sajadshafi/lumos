@@ -79,8 +79,8 @@ A skill is conformant when it:
 ## Try it
 
 ```bash
-loom --skills-dir ./skills skills            # confirm it's discovered + invokable
-loom --skills-dir ./skills validate default  # confirm a workflow can use it
+lumos --skills-dir ./skills skills            # confirm it's discovered + invokable
+lumos --skills-dir ./skills validate default  # confirm a workflow can use it
 ```
 
 Non-conformant output is a defect in the skill, not the run. Fix the `SKILL.md`

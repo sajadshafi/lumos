@@ -1,19 +1,5 @@
 # Full review workflow — the complete chain from workflow-contract.md §4.
 #
-# REQUIRES TWO SKILLS THAT DO NOT YET EXIST.
-#
-# `examples/skills/security/` and `examples/skills/performance/` currently contain
-# READMEs but no SKILL.md, so they are inert by the repository's own convention
-# and this workflow will fail validation:
-#
-#     python3 -m orchestrator validate full-review
-#     -> {"ok": false, "problems": ["security: directory exists but has no SKILL.md (inert)", ...]}
-#
-# That failure is the intended behaviour. The file is checked in as the executable
-# specification of what those skills must satisfy to join the pipeline, and as the
-# proof that adding a stage is a YAML edit rather than an orchestrator change.
-# Write the two SKILL.md files and this workflow starts working with no code change.
-#
 # Use for: schema migrations, authentication and permission changes, anything
 # touching blob storage or PII, and endpoints on a hot listing path.
 
@@ -63,7 +49,7 @@ stages:
       max_cycles: 2
 
   # A human signs off before the PR opens. The engine pauses here and will not
-  # proceed until `orchestrator approve <run> --stage post-feature-implementation`.
+  # proceed until `lumos approve <run> --stage post-feature-implementation`.
   - skill: post-feature-implementation
     description: Update docs, compose the PR description, open the pull request.
     requires_approval: true

@@ -10,7 +10,7 @@ is sufficient to resume — nothing that matters lives only in the agent's conte
 | | |
 | --- | --- |
 | Location | `state/<run-id>.state.json` |
-| Format | JSON (durable), rendered as YAML by `loom state <run>` |
+| Format | JSON (durable), rendered as YAML by `lumos state <run>` |
 | Written by | `StateManager` only |
 | Write mode | Atomic — temp file, `fsync`, `os.replace` |
 | Schema version | `1` |
@@ -50,7 +50,7 @@ scheme normalises the reference in its adapter (see `normalise_id` in
 
 ## 3. The YAML projection
 
-`loom state TASK-17` renders the model in the shape the design specifies:
+`lumos state TASK-17` renders the model in the shape the design specifies:
 
 ```yaml
 feature:
@@ -230,7 +230,7 @@ state record, and the second would silently overwrite the first's attempt histor
 Resume is not a special mode — it is the normal path:
 
 ```bash
-loom next TASK-17     # reads state, returns the correct directive
+lumos next TASK-17     # reads state, returns the correct directive
 ```
 
 Because state is written after every transition and `next` is idempotent

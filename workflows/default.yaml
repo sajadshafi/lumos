@@ -1,8 +1,7 @@
 # Default engineering workflow: plan -> implement -> test -> review -> ship.
 #
 # This is the pipeline described in examples/shared/workflow-contract.md §4,
-# minus the security and performance stages, which are inert in this repository
-# (their directories hold READMEs but no SKILL.md). See full-review.yaml.
+# minus the optional security and performance stages. See full-review.yaml.
 #
 # Retry budgets are not uniform, and the asymmetry is deliberate:
 #   feature-planner  a plan that failed twice is under-specified; more attempts

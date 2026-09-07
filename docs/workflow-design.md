@@ -1,79 +1,72 @@
 # Workflow design
 
-A workflow is a pipeline expressed as data. It names the skills to run, in order,
-with their retry budgets and any remediation loops or approval gates. Nothing in
-the engine hardcodes a skill name or an order — adding a stage is a YAML edit.
-
-This is the practical guide. For the exhaustive field reference and validation
-rules, see [`workflows.md`](workflows.md).
-
-## The shape
+A workflow is an ordered YAML pipeline. It decides which worker runs; the Python
+engine does not hardcode planning, coding, or review stages.
 
 ```yaml
-version: 1                    # schema version of this file
-name: default                 # identity; defaults to the filename
-description: A one-line summary.
-max_total_stages: 40          # runaway guard: total stage executions per run
-
+version: 1
+name: delivery
+description: Plan, implement, review, and ship a ticket.
+max_total_stages: 30
 stages:
-  - skill: feature-planner    # required — must match a skills/<name>/ with a SKILL.md
-    description: What this stage is for (shown in the directive).
-    retry:
-      max_attempts: 2         # per-stage attempt budget (default 2)
-
-  - skill: reviewer
+  - agent: planner
     retry:
       max_attempts: 2
-    remediation:              # a review loop
-      skill: fixer            #   reviewer → fixer → reviewer …
-      max_cycles: 3           #   … capped at 3 before escalation
+  - skill: coding
+    retry:
+      max_attempts: 3
+  - agent: reviewer
+    remediation:
+      skill: fixer
+      max_cycles: 2
+  - skill: post-feature-implementation
+    requires_approval: true
 ```
 
-A bare string is shorthand for a stage with defaults: `- coding` ==
-`- skill: coding`.
+## Stage fields
 
-## The four things a stage can do
-
-| Field | Effect |
+| Field | Meaning |
 |---|---|
-| `retry.max_attempts` | How many times a stage may run before it fails. Budgets are deliberately non-uniform — a plan that failed twice is under-specified, but testing earns more tries because each run yields new information. |
-| `remediation` | Turns a stage into a loop: on *changes requested*, the engine runs the `remediation.skill` (e.g. `fixer`), then re-runs the stage to verify. `max_cycles` caps it — the contract's rule is that two loops without convergence is a human decision. |
-| `requires_approval: true` | The engine pauses **before** the stage and returns `await_approval`. It resumes only after `loom approve <run> --stage <key>`. |
-| `optional: true` | An optional stage that exhausts its retries is recorded failed, but the run continues instead of failing. |
+| `skill` | Invoke a reusable skill in the current runtime context |
+| `agent` | Delegate to the named agent definition |
+| `worker` + `type` | Neutral alternative, e.g. `worker: planner`, `type: agent` |
+| `id` | Optional unique stage key, needed when reusing one worker |
+| `description` | Reason included in the directive |
+| `retry.max_attempts` | Maximum invocation attempts |
+| `optional` | Continue when retries are exhausted |
+| `requires_approval` | Pause before invocation until a human approves |
+| `remediation` | Worker to run when this stage requests changes |
 
-## Two counters, kept separate
+Each stage must specify exactly one of `skill`, `agent`, or `worker`. The string
+shorthand (`- coding`) remains equivalent to `- skill: coding`.
 
-`retry.max_attempts` and `remediation.max_cycles` count different things and never
-share a budget:
+## Remediation
 
-- **Retries** handle a stage that *failed to produce acceptable output* (a
-  malformed report, a blocker). The same stage runs again with the reason quoted
-  in.
-- **Remediation cycles** handle a stage that *worked but requested changes*. A
-  different skill runs, then control returns. Two contested cycles is the ceiling;
-  a third automated attempt buries the decision a human needs to make.
+Remediation accepts the same worker syntax:
 
-## Shipped workflows
-
-| Workflow | Stages | Runnable | For |
-|---|---|---|---|
-| `default` | planner → coding → testing → reviewer ⇄ fixer → post-impl | yes | Normal feature delivery |
-| `hotfix` | coding → testing → reviewer ⇄ fixer → post-impl | yes | A defect with a known cause |
-| `plan-only` | planner | yes | Scoping and estimation |
-| `full-review` | + security, performance, approval gate | **no** | The template for a fuller pipeline |
-
-`full-review` intentionally fails `loom workflows --validate`: its `security` and
-`performance` skills ship as directories with a README but no `SKILL.md`. That is
-the proof that turning them on is skill-authoring, not an engine change.
-
-## Author and validate
-
-```bash
-# workflows/docs-only.yaml
-loom validate docs-only          # check this one workflow against installed skills
-loom workflows --validate        # check them all; lists what is runnable
+```yaml
+- skill: reviewer
+  remediation:
+    agent: fixer
+    max_cycles: 3
 ```
 
-Every skill a workflow names — including remediation skills — must be invokable,
-or `start` refuses to run it. Validation reports every problem at once, before any
-tokens are spent.
+If `reviewer` requests `fixer`, Lumos queues `fixer`, then queues `reviewer`
+again so the worker that raised the objection verifies the result. The cycle and
+global stage ceilings prevent runaway token use.
+
+## Reusing a worker
+
+Stage ids are normally the worker name. Give repeated uses explicit ids:
+
+```yaml
+- id: architecture-review
+  agent: reviewer
+- id: final-review
+  agent: reviewer
+```
+
+## Validation
+
+`lumos validate <name>` checks the schema and every referenced skill, agent, and
+remediation target. `lumos workflows --validate` checks all workflow files.

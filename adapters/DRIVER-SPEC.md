@@ -1,119 +1,56 @@
-# Driver specification
+# Lumos runtime driver specification
 
-A **driver** binds `ai-loom`'s loop to a specific agent runtime. The engine never
-calls a model; a driver is whatever *does* — a Claude Code skill, a Copilot
-instructions file, a shell script, or a human at a terminal. This document is the
-whole contract. Implement it and your runtime can drive any workflow.
+A driver binds the deterministic Lumos CLI to an AI runtime. The engine never
+calls a model; the driver invokes the skill or agent named by each directive.
 
-The engine speaks a neutral CLI: **markdown envelope in, six-section report out,
-JSON directives over stdout.** A driver needs exactly three capabilities:
+## Required capabilities
 
-1. run a command-line program and read its stdout,
-2. read and write a text file,
-3. invoke a skill (a prompt) and capture its output.
+1. Run `lumos` and parse JSON stdout.
+2. Read an input envelope and write a worker report verbatim.
+3. Invoke a skill in the current context.
+4. Delegate an agent through the runtime's native agent mechanism, when present.
 
-That is the entire coupling surface. Anything with those three can be a driver.
+## Continuous loop
 
----
+After `lumos start <ticket>`, repeat without returning control to the user:
 
-## The commands
+1. Call `lumos next <run_id>`.
+2. For `invoke_skill`, invoke `worker`/`skill_command` with `envelope`.
+3. For `invoke_agent`, load `agent_path`, delegate `envelope`, and wait for it.
+4. Write the result verbatim to `report_path`.
+5. Call `lumos record <run_id> --stage <stage_key> --report <report_path>`.
+6. Loop on the returned directive.
 
-Machine commands emit **JSON on stdout**. Exit codes: `0` success, `1` usage/config
-error, `2` the run reached a terminal non-success state.
+Stop only when:
 
-| Command | Purpose |
+- `complete` or `abort` is returned;
+- `await_approval` requires a human decision;
+- project configuration explicitly sets `execution.mode: step`.
+
+Commentary/progress messages are not a reason to end the run.
+
+## Directive fields
+
+| Field | Meaning |
 |---|---|
-| `loom start <id> --workflow <name> [--title … --type … --branch … --metadata k=v]` | Create (or resume) a run |
-| `loom next <run>` | Get the next directive **and** the built input envelope |
-| `loom record <run> --stage <key> --report <path>` | Validate a report, advance the run |
-| `loom record <run> --stage <key> --failed --error "…"` | Record an invocation that produced no report |
-| `loom status <run>` · `loom summary <run>` | Progress board · final markdown summary |
-| `loom approve <run> --stage <key>` | Clear a manual approval gate |
-| `loom cancel <run> --reason "…"` | Terminate a run |
+| `action` | `invoke_skill`, `invoke_agent`, `await_approval`, `complete`, or `abort` |
+| `worker_type` | `skill` or `agent` |
+| `worker` | Runtime-facing worker name |
+| `skill_command` | Slash command for skills; null for agents |
+| `agent_path` | Agent instruction file for agent directives; null for skills |
+| `stage_key` | Stable workflow stage identity |
+| `envelope` | Full four-block worker input |
+| `report_path` | Required destination for the verbatim report |
 
-Add `--project-dir <dir>` (and, if your skills live elsewhere, `--skills-dir
-<dir>`) to every call, or set `LOOM_PROJECT_DIR` / `LOOM_SKILLS_DIR`.
+Legacy `skill` remains populated for compatibility with 0.1 drivers.
 
----
+## Invariants
 
-## The loop a driver must run
+- Follow the workflow's worker and order; `Next Skill` in a report is advisory.
+- Never fabricate, summarize, or repair a worker report.
+- Record an invocation failure with `--failed --error <reason>`.
+- Never decide retries or remediation loops; follow the next directive.
+- Never approve a human gate on the user's behalf.
+- Preserve all host authorization and repository instruction boundaries.
 
-```
-start
-  │
-  ▼
-next ─────────────────────────────► read directive JSON
-  ▲                                    │
-  │                                    ├─ action == "invoke_skill":
-  │                                    │     read `envelope` (or `envelope_path`)
-  │                                    │     invoke `skill` with the envelope as input
-  │                                    │     write the skill's report VERBATIM to `report_path`
-  │                                    │     record ──► loop
-  │                                    │
-  │                                    ├─ action == "await_approval":
-  │                                    │     stop; tell the human the `approve` command
-  │                                    │
-  │                                    └─ action in ("complete", "abort"):
-  │                                          run `summary`; stop
-  └────────────────────────────────────────┘
-```
-
-The `next` response contains: `action`, `skill`, `stage_key`, `attempt`,
-`envelope_path`, `report_path`, and `envelope` (the full four-block input text,
-already assembled from the work unit and every upstream report).
-
-`record` returns the verdict and the next directive. If the skill could not run at
-all, use `--failed --error "<what happened>"` instead of `--report`.
-
----
-
-## The five rules a driver must not break
-
-These are what make the engine's determinism real. A driver that breaks them
-silently defeats the point.
-
-1. **Invoke the skill the directive names** — not the one you would have picked,
-   and not the one the last report recommended. The workflow dispatches; `Next
-   Skill` only advises.
-2. **Write the report verbatim.** Do not summarise, reformat, or "improve" it. The
-   next stage consumes the full text; a paraphrase makes it re-derive the
-   repository from scratch.
-3. **Never fabricate a report.** If a skill fails to produce one, `record
-   --failed`. A synthesised report corrupts every downstream stage.
-4. **Never count attempts or decide retries yourself.** If a report is malformed,
-   the engine re-queues the same stage with the violation quoted into the
-   envelope — you just invoke it again. Loop ceilings are the engine's.
-5. **Never approve a gate on the human's behalf.** `await_approval` means stop and
-   ask.
-
-`blocked`, `escalated`, and `failed` are legitimate terminal outcomes. Report them
-honestly; do not restart a run to force a greener result unless the human asks.
-
----
-
-## Minimal reference driver (shell)
-
-A complete, runtime-free driver is about 30 lines. This is enough to drive a run
-end to end where a human (or a piped agent) fills in each report:
-
-```bash
-run=$1; proj=${2:-.}
-while :; do
-  d=$(loom --project-dir "$proj" next "$run")
-  action=$(printf '%s' "$d" | python3 -c 'import sys,json;print(json.load(sys.stdin)["action"])')
-  case "$action" in
-    invoke_skill)
-      skill=$(printf '%s'  "$d" | python3 -c 'import sys,json;print(json.load(sys.stdin)["skill"])')
-      stage=$(printf '%s'  "$d" | python3 -c 'import sys,json;print(json.load(sys.stdin)["stage_key"])')
-      report=$(printf '%s' "$d" | python3 -c 'import sys,json;print(json.load(sys.stdin)["report_path"])')
-      env=$(printf '%s'    "$d" | python3 -c 'import sys,json;print(json.load(sys.stdin)["envelope_path"])')
-      # >>> invoke `$skill` with the contents of `$env`, write its report to `$report` <<<
-      loom --project-dir "$proj" record "$run" --stage "$stage" --report "$report" ;;
-    await_approval) echo "Approval needed. Run: loom approve $run --stage <key>"; break ;;
-    complete|abort) loom --project-dir "$proj" summary "$run"; break ;;
-  esac
-done
-```
-
-The two shipped drivers ([`claude-code/`](claude-code/), [`copilot/`](copilot/))
-are this same loop expressed in each runtime's idiom.
+These invariants make runs resumable and auditable across runtimes.
