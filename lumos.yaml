@@ -6,6 +6,6 @@ ticket:
 
 execution:
   # Runtime drivers continue until completion, a terminal error, or an explicit
-  # human approval gate. Use "step" only for interactive debugging.
+  # human approval gate. Use "step" only for running steps seperately.
   mode: continuous
 
