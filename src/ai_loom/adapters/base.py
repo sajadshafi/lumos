@@ -71,9 +71,7 @@ class TrackerAdapter:
 
     def _call(self, operation: str, **params: Any) -> Any:
         if self.transport is None:
-            raise UnsupportedCapabilityError(
-                f"tracker {self.name!r} has no transport; configure tracker.transport"
-            )
+            raise UnsupportedCapabilityError(f"tracker {self.name!r} has no transport; configure tracker.transport")
         return self.transport.call(self.name, operation, {"options": self.options, **params})
 
     def fetch(self, work_id: str) -> WorkUnit:

@@ -29,7 +29,9 @@ class RemoteTracker(TrackerAdapter):
 
     def link_pull_request(self, work_id: str, pr_url: str) -> None:
         self._call(
-            "link_pull_request", work_id=work_id, pr_url=pr_url,
+            "link_pull_request",
+            work_id=work_id,
+            pr_url=pr_url,
             idempotency_key=_key(work_id, "link_pull_request", pr_url),
         )
 

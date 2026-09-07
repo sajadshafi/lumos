@@ -33,12 +33,15 @@ class AzureDevOpsTracker(RemoteTracker):
         assigned = fields.get("System.AssignedTo") or {}
         return WorkUnit(
             id=f"{normalized.partition('#')[0]}#{raw.get('id', number)}",
-            title=str(fields.get("System.Title") or ""), type=str(fields.get("System.WorkItemType") or ""),
-            state=str(fields.get("System.State") or ""), description=html_to_text(fields.get("System.Description")),
+            title=str(fields.get("System.Title") or ""),
+            type=str(fields.get("System.WorkItemType") or ""),
+            state=str(fields.get("System.State") or ""),
+            description=html_to_text(fields.get("System.Description")),
             url=str(raw.get("_links", {}).get("html", {}).get("href") or raw.get("url") or ""),
             acceptance_criteria=html_to_text(fields.get("Microsoft.VSTS.Common.AcceptanceCriteria")),
             metadata={
-                "provider": "azure-devops", "area_path": str(fields.get("System.AreaPath") or ""),
+                "provider": "azure-devops",
+                "area_path": str(fields.get("System.AreaPath") or ""),
                 "iteration_path": str(fields.get("System.IterationPath") or ""),
                 "tags": str(fields.get("System.Tags") or ""),
                 "assigned_to": str(assigned.get("displayName", "")) if isinstance(assigned, dict) else str(assigned),

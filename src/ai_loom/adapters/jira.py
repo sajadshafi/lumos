@@ -31,16 +31,22 @@ class JiraTracker(RemoteTracker):
         field_name = self.options.get("acceptance_criteria_field", "")
         acceptance = adf_to_text(fields.get(field_name)) if field_name else ""
         site = str(self.options.get("site", "")).rstrip("/")
+
         def named(name: str) -> str:
             value = fields.get(name) or {}
             return str(value.get("name", "")) if isinstance(value, dict) else str(value or "")
+
         return WorkUnit(
-            id=str(raw.get("key") or key), title=str(fields.get("summary") or ""), type=named("issuetype"),
-            state=named("status"), description=adf_to_text(fields.get("description")).strip(),
+            id=str(raw.get("key") or key),
+            title=str(fields.get("summary") or ""),
+            type=named("issuetype"),
+            state=named("status"),
+            description=adf_to_text(fields.get("description")).strip(),
             url=f"{site}/browse/{raw.get('key', key)}" if site else str(raw.get("self") or ""),
             acceptance_criteria=acceptance.strip(),
             metadata={
-                "provider": "jira", "labels": ", ".join(map(str, fields.get("labels", []) or [])),
+                "provider": "jira",
+                "labels": ", ".join(map(str, fields.get("labels", []) or [])),
                 "components": ", ".join(str(x.get("name", "")) for x in fields.get("components", []) or []),
                 "parent": str((fields.get("parent") or {}).get("key", "")),
             },

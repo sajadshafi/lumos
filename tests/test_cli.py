@@ -36,7 +36,9 @@ class LifecycleTests(CliTestCase):
 
             def fetch(self, work_id):
                 return WorkUnit(
-                    id=self.normalise_id(work_id), title="Fetched ticket", description="Remote description",
+                    id=self.normalise_id(work_id),
+                    title="Fetched ticket",
+                    description="Remote description",
                     metadata={"labels": "ready"},
                 )
 

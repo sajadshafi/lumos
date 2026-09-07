@@ -92,9 +92,17 @@ class AzureDevOpsTests(unittest.TestCase):
 
     def test_fetch_maps_fields_and_html(self):
         transport = FakeTransport(
-            {"id": 273, "rev": 4, "fields": {"System.Title": "Ship it", "System.State": "Active",
-             "System.Description": "<p>Hello <strong>world</strong></p>", "System.AreaPath": "Web",
-             "Microsoft.VSTS.Common.AcceptanceCriteria": "<ul><li>Works</li></ul>"}}
+            {
+                "id": 273,
+                "rev": 4,
+                "fields": {
+                    "System.Title": "Ship it",
+                    "System.State": "Active",
+                    "System.Description": "<p>Hello <strong>world</strong></p>",
+                    "System.AreaPath": "Web",
+                    "Microsoft.VSTS.Common.AcceptanceCriteria": "<ul><li>Works</li></ul>",
+                },
+            }
         )
         unit = AzureDevOpsTracker(transport=transport).fetch("AB#273")
         self.assertEqual(unit.id, "AB#273")
@@ -105,9 +113,19 @@ class AzureDevOpsTests(unittest.TestCase):
 
 class GitHubTests(unittest.TestCase):
     def test_url_sets_repository_and_maps_metadata(self):
-        transport = FakeTransport({"issue": {"issue_number": 2, "title": "Epic", "body": "Text\n- [ ] Done",
-                                   "state": "open", "display_url": "https://github.com/o/r/issues/2",
-                                   "labels": [{"name": "epic"}], "assignees": [{"login": "sam"}]}})
+        transport = FakeTransport(
+            {
+                "issue": {
+                    "issue_number": 2,
+                    "title": "Epic",
+                    "body": "Text\n- [ ] Done",
+                    "state": "open",
+                    "display_url": "https://github.com/o/r/issues/2",
+                    "labels": [{"name": "epic"}],
+                    "assignees": [{"login": "sam"}],
+                }
+            }
+        )
         adapter = GitHubTracker(transport=transport)
         unit = adapter.fetch("https://github.com/o/r/issues/2")
         self.assertEqual(unit.id, "GH#2")
@@ -119,18 +137,37 @@ class GitHubTests(unittest.TestCase):
 class JiraTests(unittest.TestCase):
     def test_adf_and_custom_acceptance_field_are_mapped(self):
         adf = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Hello"}]}]}
-        transport = FakeTransport({"key": "PROJ-1", "fields": {"summary": "Story", "description": adf,
-                                  "issuetype": {"name": "Story"}, "status": {"name": "Open"}, "customfield_1": adf}})
-        unit = JiraTracker(options={"site": "https://x.atlassian.net", "acceptance_criteria_field": "customfield_1"},
-                           transport=transport).fetch("PROJ-1")
+        transport = FakeTransport(
+            {
+                "key": "PROJ-1",
+                "fields": {
+                    "summary": "Story",
+                    "description": adf,
+                    "issuetype": {"name": "Story"},
+                    "status": {"name": "Open"},
+                    "customfield_1": adf,
+                },
+            }
+        )
+        unit = JiraTracker(
+            options={"site": "https://x.atlassian.net", "acceptance_criteria_field": "customfield_1"},
+            transport=transport,
+        ).fetch("PROJ-1")
         self.assertEqual(unit.description, "Hello")
         self.assertEqual(unit.acceptance_criteria, "Hello")
 
 
 class GitLabTests(unittest.TestCase):
     def test_self_managed_url_is_project_scoped(self):
-        transport = FakeTransport({"iid": 9, "title": "Bug", "description": "- [x] Reproduced", "state": "opened",
-                                   "web_url": "https://git.example/acme/app/-/issues/9"})
+        transport = FakeTransport(
+            {
+                "iid": 9,
+                "title": "Bug",
+                "description": "- [x] Reproduced",
+                "state": "opened",
+                "web_url": "https://git.example/acme/app/-/issues/9",
+            }
+        )
         adapter = GitLabTracker(transport=transport)
         unit = adapter.fetch("https://git.example/acme/app/-/issues/9")
         self.assertEqual(unit.id, "GL#9")

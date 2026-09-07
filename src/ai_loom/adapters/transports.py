@@ -118,8 +118,10 @@ class RestTransport:
         if not token:
             raise TrackerAuthenticationError("GitHub REST transport requires GITHUB_TOKEN or GH_TOKEN")
         headers = {
-            "Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json", "User-Agent": "lumos-tracker",
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "lumos-tracker",
             "X-GitHub-Api-Version": "2022-11-28",
         }
         issue_url = f"{base}/repos/{repository}/issues/{issue}"

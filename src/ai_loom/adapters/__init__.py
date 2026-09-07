@@ -25,9 +25,18 @@ from .local import LocalTracker
 from .transports import create_transport
 
 __all__ = [
-    "AzureDevOpsTracker", "GitHubTracker", "GitLabTracker", "JiraTracker", "LocalTracker",
-    "TrackerAdapter", "TrackerCapabilities", "TrackerTransport", "create_adapter",
-    "get_adapter", "list_adapters", "register_adapter",
+    "AzureDevOpsTracker",
+    "GitHubTracker",
+    "GitLabTracker",
+    "JiraTracker",
+    "LocalTracker",
+    "TrackerAdapter",
+    "TrackerCapabilities",
+    "TrackerTransport",
+    "create_adapter",
+    "get_adapter",
+    "list_adapters",
+    "register_adapter",
 ]
 
 # A tiny name -> factory registry so a runtime can select an adapter by string

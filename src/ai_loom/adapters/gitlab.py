@@ -42,13 +42,20 @@ class GitLabTracker(RemoteTracker):
         assignees = [str(x.get("username", "")) for x in raw.get("assignees", []) or []]
         milestone = raw.get("milestone") or {}
         return WorkUnit(
-            id=f"GL#{raw.get('iid', iid)}", title=str(raw.get("title") or ""), type="issue",
-            state=str(raw.get("state") or ""), description=description,
-            url=str(raw.get("web_url") or ""), acceptance_criteria=task_list(description),
+            id=f"GL#{raw.get('iid', iid)}",
+            title=str(raw.get("title") or ""),
+            type="issue",
+            state=str(raw.get("state") or ""),
+            description=description,
+            url=str(raw.get("web_url") or ""),
+            acceptance_criteria=task_list(description),
             metadata={
-                "provider": "gitlab", "project": str(self.options.get("project", "")),
-                "labels": ", ".join(map(str, raw.get("labels", []) or [])), "assignees": ", ".join(assignees),
-                "milestone": str(milestone.get("title", "")), "weight": str(raw.get("weight") or ""),
+                "provider": "gitlab",
+                "project": str(self.options.get("project", "")),
+                "labels": ", ".join(map(str, raw.get("labels", []) or [])),
+                "assignees": ", ".join(assignees),
+                "milestone": str(milestone.get("title", "")),
+                "weight": str(raw.get("weight") or ""),
                 "confidential": str(bool(raw.get("confidential", False))).lower(),
             },
         )

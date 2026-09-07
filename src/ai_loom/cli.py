@@ -127,7 +127,10 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--tracker", default=None, help="tracker provider (local, github, jira, gitlab, azure-devops)")
     start.add_argument("--tracker-transport", default=None, help="tracker transport (mcp or rest)")
     start.add_argument(
-        "--tracker-option", action="append", default=[], metavar="KEY=VALUE",
+        "--tracker-option",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
         help="non-secret provider option; repeatable and overrides lumos.yaml",
     )
     start.add_argument("--force", action="store_true", help="discard any existing run and start clean")
@@ -638,9 +641,7 @@ def cmd_publish(args: argparse.Namespace, paths: Paths) -> int:
     for key in ("repository", "project"):
         if state.work_item.metadata.get(key):
             options.setdefault(key, state.work_item.metadata[key])
-    adapter = create_adapter(
-        tracker_config.provider, transport=tracker_config.transport, options=options
-    )
+    adapter = create_adapter(tracker_config.provider, transport=tracker_config.transport, options=options)
     if tracker_config.provider == "local":
         _emit_json({"ok": True, "provider": "local", "operations": [], "message": "local tracker has no remote writes"})
         return 0
