@@ -118,6 +118,7 @@ reports flow downstream and are validated before the workflow advances.
 - [Configuration](docs/configuration.md)
 - [Worker authoring](docs/worker-authoring.md)
 - [Workflow design](docs/workflow-design.md)
+- [Upcoming features and implementation roadmap](docs/upcoming-features.md)
 - [Runtime driver contract](adapters/DRIVER-SPEC.md)
 - [Contributing](CONTRIBUTING.md)
 
