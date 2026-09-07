@@ -277,12 +277,22 @@ def _discover_project_dir() -> Path:
 
 
 @dataclass(frozen=True)
+class TrackerConfig:
+    """Non-secret project configuration for one tracker adapter."""
+
+    provider: str = "local"
+    transport: str = "mcp"
+    options: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class LumosConfig:
     """Project-level defaults shared by every runtime driver."""
 
     ticket_prefix: str = "TC"
     default_workflow: str = "default"
     execution_mode: str = "continuous"
+    tracker: TrackerConfig = field(default_factory=TrackerConfig)
 
 
 def load_project_config(paths: Paths) -> LumosConfig:
@@ -296,6 +306,14 @@ def load_project_config(paths: Paths) -> LumosConfig:
         raise ConfigError(f"{path}: {exc}") from exc
     ticket = data.get("ticket", {}) or {}
     execution = data.get("execution", {}) or {}
+    tracker = data.get("tracker", {}) or {}
+    if not isinstance(tracker, dict):
+        raise ConfigError("tracker must be a mapping")
+    raw_options = tracker.get("options", {}) or {}
+    if not isinstance(raw_options, dict):
+        raise ConfigError("tracker.options must be a mapping")
+    options = {str(key): str(value) for key, value in raw_options.items()}
+    _reject_secret_options(options)
     prefix = str(ticket.get("prefix", "TC") or "TC").strip().upper().removesuffix("#")
     if not prefix or not prefix.isalnum():
         raise ConfigError("ticket.prefix must contain only letters and digits")
@@ -306,7 +324,50 @@ def load_project_config(paths: Paths) -> LumosConfig:
         ticket_prefix=prefix,
         default_workflow=str(data.get("default_workflow", "default") or "default"),
         execution_mode=mode,
+        tracker=TrackerConfig(
+            provider=str(tracker.get("provider", "local") or "local").strip().lower(),
+            transport=str(tracker.get("transport", "mcp") or "mcp").strip().lower(),
+            options=options,
+        ),
     )
+
+
+def resolve_tracker_config(
+    config: LumosConfig,
+    *,
+    provider: str | None = None,
+    transport: str | None = None,
+    options: list[str] | None = None,
+) -> TrackerConfig:
+    """Apply CLI > environment > project > local tracker precedence."""
+    env_provider = os.environ.get("LUMOS_TRACKER")
+    env_transport = os.environ.get("LUMOS_TRACKER_TRANSPORT")
+    merged = dict(config.tracker.options)
+    env_prefix = "LUMOS_TRACKER_OPTION_"
+    for key, value in os.environ.items():
+        if key.startswith(env_prefix):
+            merged[key[len(env_prefix) :].lower()] = value
+    for pair in options or []:
+        key, sep, value = str(pair).partition("=")
+        if not sep or not key.strip():
+            raise ConfigError(f"--tracker-option expects KEY=VALUE, got {pair!r}")
+        merged[key.strip()] = value.strip()
+    _reject_secret_options(merged)
+    return TrackerConfig(
+        provider=str(provider or env_provider or config.tracker.provider or "local").strip().lower(),
+        transport=str(transport or env_transport or config.tracker.transport or "mcp").strip().lower(),
+        options=merged,
+    )
+
+
+def _reject_secret_options(options: dict[str, str]) -> None:
+    forbidden = ("token", "password", "secret", "credential", "api_key", "apikey", "authorization")
+    bad = sorted(key for key in options if any(word in key.casefold() for word in forbidden))
+    if bad:
+        raise ConfigError(
+            "tracker secrets must come from the runtime connection or environment, not lumos.yaml/options: "
+            + ", ".join(bad)
+        )
 
 
 def normalize_work_item(reference: str, prefix: str = "TC") -> str:

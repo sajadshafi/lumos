@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Add provider-neutral tracker configuration with CLI and environment overrides.
+- Add functional GitHub, Jira, GitLab, and Azure DevOps adapters behind MCP and REST transports.
+- Add tracker capabilities, typed failures, diagnostics, publishing, and shared conformance tests.
+- Document provider setup, least-privilege credentials, reference formats, and troubleshooting.
+
 ## [0.2.0] - 2026-09-07
 
 - Renamed the project and primary CLI to Lumos (`loom` remains compatible).

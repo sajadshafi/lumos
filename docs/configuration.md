@@ -7,6 +7,10 @@ version: 1
 default_workflow: default
 ticket:
   prefix: TC
+tracker:
+  provider: local
+  transport: mcp
+  options: {}
 execution:
   mode: continuous
 ```
@@ -36,3 +40,21 @@ skill owns the continuous loop, keeping the core portable between AI tools.
 | Agents | `--agents-dir` | `LUMOS_AGENTS_DIR` |
 
 Legacy `LUMOS_PROJECT_DIR` and `LUMOS_SKILLS_DIR` remain supported.
+
+## Tracker configuration
+
+The default `local` provider preserves existing behavior. Live providers are
+configured with non-secret options only:
+
+```yaml
+tracker:
+  provider: github
+  transport: mcp
+  options:
+    repository: owner/repository
+```
+
+Selection precedence is CLI (`--tracker`, `--tracker-transport`, and repeatable
+`--tracker-option KEY=VALUE`), then `LUMOS_TRACKER` / `LUMOS_TRACKER_TRANSPORT`
+/ `LUMOS_TRACKER_OPTION_*`, then `lumos.yaml`, then `local`. See
+[Tracker integrations](trackers.md) for provider setup and credentials.
