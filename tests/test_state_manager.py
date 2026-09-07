@@ -80,7 +80,7 @@ class PersistenceTests(OrchestratorTestCase):
     def test_missing_state_is_an_actionable_error(self):
         with self.assertRaises(StateError) as ctx:
             self.manager.load("AB-999")
-        self.assertIn("orchestrator start", str(ctx.exception))
+        self.assertIn("lumos start", str(ctx.exception))
 
     def test_corrupt_state_is_reported_not_swallowed(self):
         engine = self.make_engine()

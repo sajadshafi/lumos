@@ -122,7 +122,7 @@ def render_final_summary(state: WorkflowState, events: list[dict[str, Any]]) -> 
         "",
         f"**{verdict}.** Workflow `{state.workflow_name}` ran "
         f"{len([s for s in state.stages.values() if s.attempts])} of {len(state.order)} stages "
-        f"across {total_attempts} skill invocation(s) in {_duration(wall)}.",
+        f"across {total_attempts} worker invocation(s) in {_duration(wall)}.",
         "",
         "| Field | Value |",
         "| --- | --- |",
@@ -134,7 +134,7 @@ def render_final_summary(state: WorkflowState, events: list[dict[str, Any]]) -> 
         "",
         "## Stage results",
         "",
-        "| Stage | Skill | Status | Attempts | Summary |",
+        "| Stage | Worker | Status | Attempts | Summary |",
         "| --- | --- | --- | --- | --- |",
     ]
 
@@ -173,7 +173,7 @@ def render_final_summary(state: WorkflowState, events: list[dict[str, Any]]) -> 
     lines += ["", "## Execution timeline", "", "```", render_timeline(events), "```"]
 
     if not status.is_terminal:
-        lines += ["", f"_Run is still open. Continue with_ `orchestrator next {state.run_id}`."]
+        lines += ["", f"_Run is still open. Continue with_ `lumos next {state.run_id}`."]
 
     return "\n".join(lines) + "\n"
 

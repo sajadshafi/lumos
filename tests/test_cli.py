@@ -24,6 +24,53 @@ class CliTestCase(OrchestratorTestCase):
 
 
 class LifecycleTests(CliTestCase):
+    def test_bare_ticket_number_uses_default_tc_prefix(self):
+        _, payload = self.run_json("start", "273")
+        self.assertEqual(payload["run_id"], "TC-273")
+        code, out = self.run_cli("status", "273")
+        self.assertEqual(code, 0)
+        self.assertIn("TC-273", out)
+
+    def test_agent_stage_returns_an_agent_directive(self):
+        agent_dir = self.paths.agents_dir / "planner"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "AGENT.md").write_text("---\nname: planner\n---\n", encoding="utf-8")
+        (self.paths.workflows_dir / "agent-first.yaml").write_text(
+            "name: agent-first\nstages:\n  - agent: planner\n", encoding="utf-8"
+        )
+        self.run_json("start", "TC#1", "--workflow", "agent-first")
+        code, payload = self.run_json("next", "TC-1")
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["action"], "invoke_agent")
+        self.assertEqual(payload["worker_type"], "agent")
+        self.assertEqual(payload["worker"], "planner")
+        self.assertTrue(payload["agent_path"].endswith("AGENT.md"))
+
+    def test_agent_remediation_dispatches_an_agent_fixer(self):
+        for name in ("reviewer-agent", "fixer-agent"):
+            agent_dir = self.paths.agents_dir / name
+            agent_dir.mkdir(parents=True)
+            (agent_dir / "AGENT.md").write_text(
+                f"---\nname: {name}\n---\n", encoding="utf-8"
+            )
+        (self.paths.workflows_dir / "agent-remediation.yaml").write_text(
+            "name: agent-remediation\nstages:\n"
+            "  - agent: reviewer-agent\n"
+            "    remediation:\n"
+            "      agent: fixer-agent\n"
+            "      max_cycles: 2\n",
+            encoding="utf-8",
+        )
+        self.run_json("start", "TC#2", "--workflow", "agent-remediation")
+        directive = self.run_json("next", "TC-2")[1]
+        with open(directive["report_path"], "w", encoding="utf-8") as handle:
+            handle.write(report(next_skill="fixer-agent — changes requested"))
+        _, payload = self.run_json(
+            "record", "TC-2", "--stage", "reviewer-agent", "--report", directive["report_path"]
+        )
+        self.assertEqual(payload["directive"]["action"], "invoke_agent")
+        self.assertEqual(payload["directive"]["worker"], "fixer-agent")
+
     def test_start_creates_a_run(self):
         code, payload = self.run_json("start", "AB#273", "--title", "Attendance", "--branch", "feat/273")
         self.assertEqual(code, 0)
@@ -141,6 +188,14 @@ class ExitCodeTests(CliTestCase):
 
 
 class InspectionTests(CliTestCase):
+    def test_install_copies_the_lumos_runtime_skill(self):
+        destination = self.tmp / "installed-lumos"
+        code, payload = self.run_json("install", "codex", "--destination", str(destination))
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertTrue((destination / "SKILL.md").is_file())
+        self.assertTrue((destination / "agents" / "openai.yaml").is_file())
+
     def test_skills_lists_invokable_and_inert(self):
         _, payload = self.run_json("skills")
         by_name = {s["name"]: s for s in payload["skills"]}

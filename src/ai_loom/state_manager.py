@@ -90,7 +90,9 @@ class StateManager:
             status=WorkflowStatus.RUNNING.value,
         )
         for definition in workflow.stages:
-            state.stages[definition.key] = Stage(key=definition.key, skill=definition.skill)
+            state.stages[definition.key] = Stage(
+                key=definition.key, skill=definition.worker, worker_type=definition.kind
+            )
             state.order.append(definition.key)
         state.pending_queue = list(state.order)
         state.next_step = state.pending_queue[0] if state.pending_queue else None
@@ -101,7 +103,7 @@ class StateManager:
         path = self._paths.state_file(run_id)
         if not path.is_file():
             raise StateError(
-                f"no state for run {run_id!r} at {path}. Start it with: orchestrator start {run_id}"
+                f"no state for run {run_id!r} at {path}. Start it with: lumos start {run_id}"
             )
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -212,12 +214,13 @@ class StateManager:
         state: WorkflowState,
         key: str,
         skill: str,
+        worker_type: str = "skill",
         returns_to: str | None = None,
     ) -> Stage:
         """Register a dynamically created stage, such as a remediation run."""
         stage = state.stages.get(key)
         if stage is None:
-            stage = Stage(key=key, skill=skill, returns_to=returns_to)
+            stage = Stage(key=key, skill=skill, worker_type=worker_type, returns_to=returns_to)
             state.stages[key] = stage
             # `order` drives every rendered view, so a remediation stage belongs
             # immediately after the stage that spawned it. Appending would show
@@ -229,6 +232,7 @@ class StateManager:
         else:
             # A repeat remediation cycle reuses the stage and gets a fresh budget.
             stage.status = StageStatus.PENDING.value
+            stage.worker_type = worker_type
             stage.returns_to = returns_to
         return stage
 

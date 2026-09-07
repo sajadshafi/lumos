@@ -3,15 +3,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ai-loom"
-version = "0.1.0"
-description = "A deterministic engine for sequencing AI skills into reliable engineering workflows."
+name = "lumos"
+version = "0.2.0"
+description = "A runtime-neutral, spec-driven orchestrator for AI skills and agents."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 keywords = ["ai", "agents", "orchestration", "workflow", "skills", "llm", "pipeline"]
-authors = [{ name = "ai-loom contributors" }]
+authors = [{ name = "Lumos contributors" }]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -32,15 +32,16 @@ yaml = ["PyYAML>=5.1"]
 dev = ["ruff>=0.5"]
 
 [project.urls]
-Homepage = "https://github.com/your-org/ai-loom"
-Documentation = "https://github.com/your-org/ai-loom/tree/main/docs"
-Issues = "https://github.com/your-org/ai-loom/issues"
+Homepage = "https://github.com/sajadshafi/lumos"
+Documentation = "https://github.com/sajadshafi/lumos/tree/main/docs"
+Issues = "https://github.com/sajadshafi/lumos/issues"
 
 [project.scripts]
+lumos = "ai_loom.cli:main_cli"
 loom = "ai_loom.cli:main_cli"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ai_loom"]
+packages = ["src/ai_loom", "src/lumos"]
 
 [tool.ruff]
 line-length = 120

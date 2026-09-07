@@ -1,0 +1,19 @@
+version: 1
+name: replace-me
+description: Describe the outcome this pipeline produces.
+max_total_stages: 30
+
+stages:
+  - agent: planner
+    retry:
+      max_attempts: 2
+
+  - skill: coding
+    retry:
+      max_attempts: 3
+
+  - agent: reviewer
+    remediation:
+      skill: fixer
+      max_cycles: 2
+

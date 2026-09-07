@@ -1,0 +1,22 @@
+version: 1
+name: mixed-example
+description: Example pipeline mixing a delegated agent with reusable skills.
+max_total_stages: 20
+
+stages:
+  - agent: planner
+    description: Delegate repository analysis and produce the implementation spec.
+    retry:
+      max_attempts: 2
+
+  - skill: coding
+    description: Implement the approved spec in the current runtime context.
+    retry:
+      max_attempts: 3
+
+  - skill: reviewer
+    description: Review the result and request targeted remediation when necessary.
+    remediation:
+      agent: fixer
+      max_cycles: 2
+

@@ -1,0 +1,8 @@
+interface:
+  display_name: "Lumos"
+  short_description: "Run spec-driven skill and agent workflows"
+  default_prompt: "Use $lumos to deliver TC#123 through the configured workflow."
+
+policy:
+  allow_implicit_invocation: true
+

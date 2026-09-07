@@ -20,6 +20,7 @@ from .retry import DEFAULT_MAX_REMEDIATION_CYCLES, RetryPolicy
 # Global ceiling on stage executions per run. A misconfigured remediation loop
 # should surface as a clear abort, not as an unbounded token spend.
 DEFAULT_MAX_TOTAL_STAGES = 40
+WORKER_TYPES = frozenset({"skill", "agent"})
 
 
 @dataclass(frozen=True)
@@ -32,19 +33,22 @@ class Remediation:
     """
 
     skill: str
+    kind: str = "skill"
     max_cycles: int = DEFAULT_MAX_REMEDIATION_CYCLES
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> Remediation | None:
         if not data:
             return None
-        skill = data.get("skill")
-        if not skill:
-            raise ConfigError("remediation block requires a 'skill'")
+        kind, skill = _parse_worker(data, context="remediation block")
         cycles = int(data.get("max_cycles", DEFAULT_MAX_REMEDIATION_CYCLES))
         if cycles < 1:
             raise ConfigError("remediation.max_cycles must be at least 1")
-        return cls(skill=str(skill), max_cycles=cycles)
+        return cls(skill=skill, kind=kind, max_cycles=cycles)
+
+    @property
+    def worker(self) -> str:
+        return self.skill
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,8 @@ class StageDefinition:
     """One stage of a workflow definition."""
 
     skill: str
+    kind: str = "skill"
+    id: str = ""
     retry: RetryPolicy = field(default_factory=RetryPolicy)
     remediation: Remediation | None = None
     requires_approval: bool = False
@@ -60,6 +66,10 @@ class StageDefinition:
 
     @property
     def key(self) -> str:
+        return self.id or self.skill
+
+    @property
+    def worker(self) -> str:
         return self.skill
 
     @classmethod
@@ -69,11 +79,11 @@ class StageDefinition:
             return cls(skill=data)
         if not isinstance(data, dict):
             raise ConfigError(f"stage entry must be a string or mapping, got {type(data).__name__}")
-        skill = data.get("skill")
-        if not skill:
-            raise ConfigError("stage entry requires a 'skill' key")
+        kind, skill = _parse_worker(data, context="stage entry")
         return cls(
-            skill=str(skill),
+            skill=skill,
+            kind=kind,
+            id=str(data.get("id", "") or ""),
             retry=RetryPolicy.from_dict(data.get("retry")),
             remediation=Remediation.from_dict(data.get("remediation")),
             requires_approval=bool(data.get("requires_approval", False)),
@@ -92,21 +102,32 @@ class WorkflowDefinition:
     description: str = ""
     max_total_stages: int = DEFAULT_MAX_TOTAL_STAGES
 
-    def stage(self, skill: str) -> StageDefinition | None:
+    def stage(self, key: str) -> StageDefinition | None:
         for stage in self.stages:
-            if stage.skill == skill:
+            if stage.key == key:
                 return stage
         return None
 
     @property
     def skills(self) -> tuple[str, ...]:
-        """Every skill the workflow can invoke, including remediation skills."""
+        """Every skill the workflow can invoke (legacy discovery API)."""
         names: list[str] = []
         for stage in self.stages:
-            names.append(stage.skill)
-            if stage.remediation:
+            if stage.kind == "skill":
+                names.append(stage.skill)
+            if stage.remediation and stage.remediation.kind == "skill":
                 names.append(stage.remediation.skill)
         return tuple(dict.fromkeys(names))
+
+    @property
+    def workers(self) -> tuple[tuple[str, str], ...]:
+        """Every (type, name) worker referenced by the workflow."""
+        workers: list[tuple[str, str]] = []
+        for stage in self.stages:
+            workers.append((stage.kind, stage.worker))
+            if stage.remediation:
+                workers.append((stage.remediation.kind, stage.remediation.worker))
+        return tuple(dict.fromkeys(workers))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], fallback_name: str = "") -> WorkflowDefinition:
@@ -126,12 +147,12 @@ class WorkflowDefinition:
 
         seen: set[str] = set()
         for stage in stages:
-            if stage.skill in seen:
+            if stage.key in seen:
                 raise ConfigError(
-                    f"duplicate stage {stage.skill!r}: a skill may appear once per workflow, "
-                    "because stage keys must be unique in state"
+                    f"duplicate stage {stage.key!r}: stage ids must be unique in state; "
+                    "set an explicit 'id' when reusing a worker"
                 )
-            seen.add(stage.skill)
+            seen.add(stage.key)
 
         name = str(data.get("name") or fallback_name or "unnamed")
         max_total = int(data.get("max_total_stages", DEFAULT_MAX_TOTAL_STAGES))
@@ -157,6 +178,7 @@ class Paths:
 
     root: Path
     skills_dir: Path
+    agents_dir: Path
     workflows_dir: Path
     state_dir: Path
     logs_dir: Path
@@ -168,6 +190,7 @@ class Paths:
         project_dir: str | os.PathLike[str] | None = None,
         *,
         skills_dir: str | os.PathLike[str] | None = None,
+        agents_dir: str | os.PathLike[str] | None = None,
     ) -> Paths:
         """Resolve the flat, standalone project layout.
 
@@ -179,9 +202,11 @@ class Paths:
         """
         base = Path(project_dir) if project_dir else _discover_project_dir()
         skills = cls._resolve_skills_dir(base, skills_dir)
+        agents = cls._resolve_agents_dir(base, agents_dir)
         return cls(
             root=base,
             skills_dir=skills,
+            agents_dir=agents,
             workflows_dir=base / "workflows",
             state_dir=base / "state",
             logs_dir=base / "logs",
@@ -194,7 +219,7 @@ class Paths:
     ) -> Path:
         if skills_dir:
             return Path(skills_dir)
-        env = os.environ.get("LOOM_SKILLS_DIR")
+        env = os.environ.get("LUMOS_SKILLS_DIR") or os.environ.get("LOOM_SKILLS_DIR")
         if env:
             return Path(env)
         # A repo may vendor its own `skills/`; the shipped examples otherwise
@@ -206,6 +231,21 @@ class Paths:
         if bundled.is_dir():
             return bundled
         return local
+
+    @staticmethod
+    def _resolve_agents_dir(
+        base: Path, agents_dir: str | os.PathLike[str] | None
+    ) -> Path:
+        if agents_dir:
+            return Path(agents_dir)
+        env = os.environ.get("LUMOS_AGENTS_DIR")
+        if env:
+            return Path(env)
+        local = base / "agents"
+        if local.exists():
+            return local
+        bundled = base / "examples" / "agents"
+        return bundled if bundled.exists() else local
 
     def ensure(self) -> None:
         for directory in (self.state_dir, self.logs_dir, self.runs_dir):
@@ -228,7 +268,7 @@ def _discover_project_dir() -> Path:
     the tool still works dropped inside a Claude Code project. Otherwise walk up
     looking for a marker that identifies a project root.
     """
-    for var in ("LOOM_PROJECT_DIR", "CLAUDE_PROJECT_DIR"):
+    for var in ("LUMOS_PROJECT_DIR", "LOOM_PROJECT_DIR", "CLAUDE_PROJECT_DIR"):
         env = os.environ.get(var)
         if env:
             return Path(env)
@@ -238,6 +278,76 @@ def _discover_project_dir() -> Path:
         if any((candidate / marker).exists() for marker in markers):
             return candidate
     return current
+
+
+@dataclass(frozen=True)
+class LumosConfig:
+    """Project-level defaults shared by every runtime driver."""
+
+    ticket_prefix: str = "TC"
+    default_workflow: str = "default"
+    execution_mode: str = "continuous"
+
+
+def load_project_config(paths: Paths) -> LumosConfig:
+    """Load ``lumos.yaml`` when present, otherwise return portable defaults."""
+    path = paths.root / "lumos.yaml"
+    if not path.is_file():
+        return LumosConfig()
+    try:
+        data = yamlcompat.load(path.read_text(encoding="utf-8")) or {}
+    except yamlcompat.YamlError as exc:
+        raise ConfigError(f"{path}: {exc}") from exc
+    ticket = data.get("ticket", {}) or {}
+    execution = data.get("execution", {}) or {}
+    prefix = str(ticket.get("prefix", "TC") or "TC").strip().upper().removesuffix("#")
+    if not prefix or not prefix.isalnum():
+        raise ConfigError("ticket.prefix must contain only letters and digits")
+    mode = str(execution.get("mode", "continuous") or "continuous").lower()
+    if mode not in {"continuous", "step"}:
+        raise ConfigError("execution.mode must be 'continuous' or 'step'")
+    return LumosConfig(
+        ticket_prefix=prefix,
+        default_workflow=str(data.get("default_workflow", "default") or "default"),
+        execution_mode=mode,
+    )
+
+
+def normalize_work_item(reference: str, prefix: str = "TC") -> str:
+    """Return the canonical ``PREFIX#NUMBER`` form used by slash invocations."""
+    token = str(reference).strip().upper()
+    if token.isdigit():
+        return f"{prefix.upper()}#{token}"
+    if token.startswith("#") and token[1:].isdigit():
+        return f"{prefix.upper()}{token}"
+    if "#" in token:
+        head, sep, number = token.partition("#")
+        if head.isalnum() and number.isdigit() and sep:
+            return f"{head}#{number}"
+    # Preserve legacy tracker ids such as TASK-17; adapters may normalise them.
+    return token
+
+
+def _parse_worker(data: dict[str, Any], *, context: str) -> tuple[str, str]:
+    present = [key for key in ("skill", "agent", "worker") if data.get(key)]
+    if len(present) != 1:
+        raise ConfigError(f"{context} requires exactly one of 'skill', 'agent', or 'worker'")
+    key = present[0]
+    if key == "worker":
+        raw = data[key]
+        if isinstance(raw, dict):
+            kind = str(raw.get("type", "") or "").lower()
+            name = str(raw.get("name", "") or "")
+        else:
+            kind = str(data.get("type", "skill") or "skill").lower()
+            name = str(raw)
+    else:
+        kind, name = key, str(data[key])
+    if kind not in WORKER_TYPES:
+        raise ConfigError(f"{context} worker type must be 'skill' or 'agent'")
+    if not name.strip():
+        raise ConfigError(f"{context} worker name cannot be empty")
+    return kind, name.strip()
 
 
 def load_workflow(paths: Paths, name: str) -> WorkflowDefinition:

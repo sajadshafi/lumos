@@ -37,7 +37,7 @@ the agent cannot count attempts, because it never sees the counter.
 ```mermaid
 flowchart TB
     subgraph agent["Agent — judgment"]
-        SKILL["/orchestrator SKILL.md<br/>Engineering Manager"]
+        SKILL["/lumos SKILL.md<br/>Engineering Manager"]
         TOOL["Skill tool"]
         ADO["Tracker adapter<br/>(optional: read + comment)"]
     end
@@ -173,12 +173,12 @@ A full run with one remediation cycle:
 ```mermaid
 sequenceDiagram
     actor U as User
-    participant O as /orchestrator
+    participant O as /lumos
     participant C as CLI + Engine
     participant S as Skill tool
     participant A as Tracker adapter (optional)
 
-    U->>O: /orchestrator TASK-17
+    U->>O: /lumos TASK-17
     O->>A: fetch(TASK-17)
     A-->>O: title, description, criteria
     O->>C: start TASK-17 --workflow default
@@ -288,7 +288,7 @@ stage by its origin, so a later `fixer@security` cannot collide with it in state
 | **Deterministic** | Engine is pure over (definition, state). No clocks or randomness in control flow. Same inputs → same directive. |
 | **Recoverable** | State is the only source of truth, written atomically after every transition. Kill the process at any point; `next` resumes correctly. |
 | **Composable** | Workflows are data. Stages compose without knowing each other; the only coupling is the report contract. |
-| **Extensible** | Adding a skill is a directory plus a YAML line. `full-review.yaml` ships as the proof — it needs two skills that do not exist, and fails validation cleanly rather than crashing. |
+| **Extensible** | Adding a skill or agent is a worker definition plus a YAML line; the engine remains unchanged. |
 | **Bounded** | Per-stage attempt budgets, per-loop cycle ceilings, and a global `max_total_stages` runaway guard. |
 | **Auditable** | Every envelope and report persisted under `runs/`; every transition in the JSONL timeline. |
 | **Zero-install** | Standard library only. No pip, no virtualenv, in a .NET + pnpm repository. |

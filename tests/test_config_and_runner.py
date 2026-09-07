@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from ai_loom import yamlcompat
-from ai_loom.config import WorkflowDefinition, load_workflow
+from ai_loom.config import Paths, WorkflowDefinition, load_project_config, load_workflow, normalize_work_item
 from ai_loom.errors import ConfigError, SkillNotFoundError
 from ai_loom.models import Verdict
 from ai_loom.retry import RetryPolicy
@@ -65,8 +65,31 @@ stages:
 
 
 class WorkflowDefinitionTests(OrchestratorTestCase):
+    def test_agent_stage_and_agent_remediation_parse(self):
+        definition = WorkflowDefinition.from_dict(
+            {"name": "mixed", "stages": [
+                {"agent": "planner"},
+                {"skill": "reviewer", "remediation": {"agent": "fixer"}},
+            ]}
+        )
+        self.assertEqual(definition.stages[0].kind, "agent")
+        self.assertEqual(definition.stages[1].remediation.kind, "agent")
+        self.assertEqual(
+            definition.workers,
+            (("agent", "planner"), ("skill", "reviewer"), ("agent", "fixer")),
+        )
+
+    def test_explicit_stage_id_allows_reusing_a_worker(self):
+        definition = WorkflowDefinition.from_dict(
+            {"name": "repeat", "stages": [
+                {"id": "review-one", "agent": "reviewer"},
+                {"id": "review-two", "agent": "reviewer"},
+            ]}
+        )
+        self.assertEqual([s.key for s in definition.stages], ["review-one", "review-two"])
+
     def test_shipped_workflows_all_parse(self):
-        # Guards the real files in .claude/orchestrator/workflows/, not fixtures.
+        # Guards the real shipped workflow files, not fixtures.
         from ai_loom.config import Paths
 
         real = Paths.resolve(self.tmp.parents[0] if False else None)
@@ -110,6 +133,18 @@ class WorkflowDefinitionTests(OrchestratorTestCase):
 
 
 class SkillDiscoveryTests(OrchestratorTestCase):
+    def test_discovers_agents_and_validates_mixed_workers(self):
+        directory = self.paths.agents_dir / "planner"
+        directory.mkdir(parents=True)
+        (directory / "AGENT.md").write_text(
+            "---\nname: planner\ndescription: Plans work.\n---\n", encoding="utf-8"
+        )
+        found = self.runner.discover_agents()
+        self.assertTrue(found["planner"].invokable)
+        self.assertEqual(
+            self.runner.validate_workers((("agent", "planner"), ("skill", "coding"))), []
+        )
+
     def test_discovers_invokable_skills(self):
         found = self.runner.discover()
         self.assertTrue(found["coding"].invokable)
@@ -196,6 +231,23 @@ class EnvelopeTests(OrchestratorTestCase):
         path = self.runner.write_envelope(engine.state, request)
         self.assertTrue(path.is_file())
         self.assertIn("## Objective", path.read_text(encoding="utf-8"))
+
+
+class ProjectConfigTests(OrchestratorTestCase):
+    def test_defaults_use_tc_and_continuous_execution(self):
+        config = load_project_config(self.paths)
+        self.assertEqual(config.ticket_prefix, "TC")
+        self.assertEqual(config.execution_mode, "continuous")
+        self.assertEqual(normalize_work_item("123", config.ticket_prefix), "TC#123")
+
+    def test_ticket_prefix_is_configurable(self):
+        (self.tmp / "lumos.yaml").write_text(
+            "default_workflow: default\nticket:\n  prefix: C3#\nexecution:\n  mode: step\n",
+            encoding="utf-8",
+        )
+        config = load_project_config(Paths.resolve(self.tmp))
+        self.assertEqual(normalize_work_item("#42", config.ticket_prefix), "C3#42")
+        self.assertEqual(config.execution_mode, "step")
 
 
 class RetryPolicyTests(unittest.TestCase):

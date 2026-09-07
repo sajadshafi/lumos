@@ -71,6 +71,7 @@ class Action(str, Enum):
     """
 
     INVOKE_SKILL = "invoke_skill"
+    INVOKE_AGENT = "invoke_agent"
     AWAIT_APPROVAL = "await_approval"
     COMPLETE = "complete"
     ABORT = "abort"
@@ -166,6 +167,7 @@ class Stage:
 
     key: str
     skill: str
+    worker_type: str = "skill"
     status: str = StageStatus.PENDING.value
     attempts: list[Attempt] = field(default_factory=list)
     summary: str = ""
@@ -188,6 +190,8 @@ class Stage:
         return {
             "key": self.key,
             "skill": self.skill,
+            "worker": self.skill,
+            "worker_type": self.worker_type,
             "status": self.status,
             "attempts": [a.to_dict() for a in self.attempts],
             "summary": self.summary,
@@ -204,6 +208,7 @@ class Stage:
         return cls(
             key=data["key"],
             skill=data["skill"],
+            worker_type=data.get("worker_type", "skill"),
             status=data.get("status", StageStatus.PENDING.value),
             attempts=[Attempt.from_dict(a) for a in data.get("attempts", [])],
             summary=data.get("summary", ""),
@@ -311,6 +316,8 @@ class Directive:
     run_id: str
     stage_key: str | None = None
     skill: str | None = None
+    worker: str | None = None
+    worker_type: str | None = None
     attempt: int = 0
     max_attempts: int = 0
     reason: str = ""

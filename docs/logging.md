@@ -75,7 +75,7 @@ than written as `null`, keeping lines compact.
 ## 4. Rendered timeline
 
 ```bash
-loom timeline TASK-17
+lumos timeline TASK-17
 ```
 
 ```
@@ -105,7 +105,7 @@ loom timeline TASK-17
 Elapsed time is relative to the first event, because absolute timestamps make it
 hard to see where a run actually spent its time.
 
-The same timeline is embedded in `loom summary` output, so the artifact
+The same timeline is embedded in `lumos summary` output, so the artifact
 posted to the work item is self-contained.
 
 ---
@@ -140,7 +140,7 @@ of keeping it is high while a work item is open. To clear finished runs:
 
 ```bash
 # remove artifacts for runs that reached a terminal state
-loom runs \
+lumos runs \
   | jq -r '.runs[] | select(.status | IN("completed","cancelled")) | .run_id' \
   | while read -r id; do
       rm -f "state/$id.state.json" \

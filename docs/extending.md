@@ -42,7 +42,7 @@ contract — the orchestrator needs nothing else.
 **Verify:**
 
 ```bash
-loom validate default
+lumos validate default
 ```
 
 The already-shipped `full-review.yaml` is the worked example: it references
@@ -83,8 +83,8 @@ stages:
 ```
 
 ```bash
-loom validate docs-only
-loom start TASK-42 --workflow docs-only
+lumos validate docs-only
+lumos start TASK-42 --workflow docs-only
 ```
 
 Branching lives in separate workflow files, never in conditional YAML. An `if`

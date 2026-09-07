@@ -2,7 +2,7 @@
 
 ### How is this different from a prompt runner or an agent framework?
 
-A prompt runner sends prompts and trusts the result. `ai-loom` moves the parts
+A prompt runner sends prompts and trusts the result. `Lumos` moves the parts
 that must be exact — state, attempt counts, retry budgets, loop ceilings, resume,
 contract validation — into deterministic code the agent never controls. The agent
 supplies judgment; the engine supplies the guarantees. It is the reliability
@@ -53,7 +53,7 @@ as read-only.
 
 ### A run died halfway. Do I lose it?
 
-No. State is written atomically after every step. `loom next <run>` reads the
+No. State is written atomically after every step. `lumos next <run>` reads the
 state file and returns the correct next directive — resume is the normal path, not
 a special mode.
 
@@ -69,7 +69,7 @@ is parsed by PyYAML when present and a bundled fallback parser otherwise; state 
 JSON; tests are stdlib. Keeping the dependency budget at zero is a feature, not an
 oversight.
 
-### The name is `ai-loom` / `loom` — is that final?
+### Is `loom` still supported?
 
-No. It's a working title while the project settles. The engine, the report
-contract, and the CLI verbs are stable; the branding is not.
+Yes. Lumos is the final project name and `lumos` is the primary command. `loom`
+remains a compatibility alias for 0.1 installations and scripts.

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0] - 2026-09-07
+
+- Renamed the project and primary CLI to Lumos (`loom` remains compatible).
+- Added typed `skill` and `agent` workflow stages and remediation workers.
+- Added `lumos.yaml` with configurable ticket prefix and execution mode.
+- Added continuous `/lumos` runtime drivers, agent discovery, templates, and a
+  built-in `lumos install codex|claude` command.
+
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -44,5 +52,6 @@ made runtime- and tracker-neutral.
 - Moved the project-specific default constraints out of the engine and into an
   editable `constraints/default.md`.
 
-[Unreleased]: https://github.com/your-org/ai-loom/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/your-org/ai-loom/releases/tag/v0.1.0
+[Unreleased]: https://github.com/sajadshafi/lumos/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/sajadshafi/lumos/releases/tag/v0.2.0
+[0.1.0]: https://github.com/sajadshafi/lumos/releases/tag/v0.1.0
