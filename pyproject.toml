@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lumos"
-version = "0.2.0"
+version = "0.3.0"
 description = "A runtime-neutral, spec-driven orchestrator for AI skills and agents."
 readme = "README.md"
 requires-python = ">=3.9"

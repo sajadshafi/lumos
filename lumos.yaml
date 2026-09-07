@@ -4,8 +4,14 @@ default_workflow: default
 ticket:
   prefix: TC
 
+# The local provider is the zero-configuration fallback. To fetch live tickets,
+# choose github, jira, gitlab, or azure-devops and follow docs/trackers.md.
+tracker:
+  provider: local
+  transport: mcp
+  options: {}
+
 execution:
   # Runtime drivers continue until completion, a terminal error, or an explicit
-  # human approval gate. Use "step" only for running steps seperately.
+  # human approval gate. Use "step" only for running steps separately.
   mode: continuous
-

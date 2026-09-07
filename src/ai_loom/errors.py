@@ -50,3 +50,35 @@ class ContractViolation(RecoverableError):
 
 class WorkflowAborted(UnrecoverableError):
     """The run cannot continue and no retry will help."""
+
+
+class TrackerError(OrchestratorError):
+    """Base error for a tracker operation."""
+
+
+class TrackerUnavailableError(TrackerError):
+    """The selected provider or transport cannot currently be reached."""
+
+    recoverable = True
+
+
+class TrackerAuthenticationError(TrackerError):
+    """Tracker credentials are missing or were rejected."""
+
+
+class TrackerPermissionError(TrackerError):
+    """The active identity cannot perform the requested tracker operation."""
+
+
+class TrackerNotFoundError(TrackerError):
+    """The requested ticket or repository/project does not exist or is hidden."""
+
+
+class TrackerThrottledError(TrackerError):
+    """The provider rate-limited the operation; retrying later may succeed."""
+
+    recoverable = True
+
+
+class UnsupportedCapabilityError(TrackerError):
+    """The adapter or active transport does not implement an operation."""

@@ -24,6 +24,33 @@ class CliTestCase(OrchestratorTestCase):
 
 
 class LifecycleTests(CliTestCase):
+    def test_start_fetches_selected_tracker_before_creating_state(self):
+        from ai_loom.adapters import TrackerAdapter, register_adapter
+        from ai_loom.models import WorkUnit
+
+        class FakeTracker(TrackerAdapter):
+            name = "fake"
+
+            def normalise_id(self, work_id):
+                return f"FAKE#{str(work_id).lstrip('#')}"
+
+            def fetch(self, work_id):
+                return WorkUnit(
+                    id=self.normalise_id(work_id), title="Fetched ticket", description="Remote description",
+                    metadata={"labels": "ready"},
+                )
+
+        register_adapter("fake", FakeTracker)
+        (self.tmp / "lumos.yaml").write_text("tracker:\n  provider: fake\n", encoding="utf-8")
+        code, payload = self.run_json("start", "42")
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["run_id"], "FAKE-42")
+        self.assertEqual(payload["tracker"]["provider"], "fake")
+        state = self.manager.load("FAKE-42")
+        self.assertEqual(state.work_item.title, "Fetched ticket")
+        self.assertEqual(state.work_item.metadata["labels"], "ready")
+        self.assertEqual(state.work_item.metadata["tracker_transport"], "mcp")
+
     def test_bare_ticket_number_uses_default_tc_prefix(self):
         _, payload = self.run_json("start", "273")
         self.assertEqual(payload["run_id"], "TC-273")
@@ -185,6 +212,13 @@ class ExitCodeTests(CliTestCase):
 
 
 class InspectionTests(CliTestCase):
+    def test_trackers_lists_first_party_providers_and_local_default(self):
+        code, payload = self.run_json("trackers")
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["selected"], "local")
+        providers = {row["provider"] for row in payload["trackers"]}
+        self.assertTrue({"local", "github", "jira", "gitlab", "azure-devops"}.issubset(providers))
+
     def test_install_copies_the_lumos_runtime_skill(self):
         destination = self.tmp / "installed-lumos"
         code, payload = self.run_json("install", "codex", "--destination", str(destination))

@@ -47,6 +47,10 @@ version: 1
 default_workflow: default
 ticket:
   prefix: TC
+tracker:
+  provider: local
+  transport: mcp
+  options: {}
 execution:
   mode: continuous
 ```
@@ -90,6 +94,7 @@ Check configuration before spending model time:
 lumos workers
 lumos validate default
 lumos workflows --validate
+lumos trackers
 ```
 
 ## Continuous execution
@@ -118,6 +123,7 @@ reports flow downstream and are validated before the workflow advances.
 - [Configuration](docs/configuration.md)
 - [Worker authoring](docs/worker-authoring.md)
 - [Workflow design](docs/workflow-design.md)
+- [Tracker integrations](docs/trackers.md)
 - [Upcoming features and implementation roadmap](docs/upcoming-features.md)
 - [Runtime driver contract](adapters/DRIVER-SPEC.md)
 - [Contributing](CONTRIBUTING.md)

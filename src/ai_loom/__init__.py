@@ -13,10 +13,18 @@ Entry point: `python3 -m lumos --help` (or the installed `lumos` command).
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 CONTRACT_VERSION = "1.0.0"
 
-from .config import LumosConfig, Paths, StageDefinition, WorkflowDefinition, load_project_config, load_workflow
+from .config import (
+    LumosConfig,
+    Paths,
+    StageDefinition,
+    TrackerConfig,
+    WorkflowDefinition,
+    load_project_config,
+    load_workflow,
+)
 from .engine import Engine
 from .errors import (
     ConfigError,
@@ -24,6 +32,13 @@ from .errors import (
     OrchestratorError,
     SkillNotFoundError,
     StateError,
+    TrackerAuthenticationError,
+    TrackerError,
+    TrackerNotFoundError,
+    TrackerPermissionError,
+    TrackerThrottledError,
+    TrackerUnavailableError,
+    UnsupportedCapabilityError,
 )
 from .models import (
     Action,
@@ -50,6 +65,7 @@ __all__ = [
     "OrchestratorError",
     "Paths",
     "LumosConfig",
+    "TrackerConfig",
     "RetryPolicy",
     "SkillNotFoundError",
     "SkillRunner",
@@ -58,6 +74,13 @@ __all__ = [
     "StageStatus",
     "StateError",
     "StateManager",
+    "TrackerAuthenticationError",
+    "TrackerError",
+    "TrackerNotFoundError",
+    "TrackerPermissionError",
+    "TrackerThrottledError",
+    "TrackerUnavailableError",
+    "UnsupportedCapabilityError",
     "Verdict",
     "WorkItem",
     "WorkUnit",

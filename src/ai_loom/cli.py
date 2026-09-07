@@ -26,18 +26,23 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import subprocess
 import sys
+from dataclasses import replace
 from importlib import resources
 from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .adapters import create_adapter, list_adapters
 from .config import (
     Paths,
     list_workflows,
     load_project_config,
     load_workflow,
     normalize_work_item,
+    resolve_tracker_config,
 )
 from .engine import Engine
 from .errors import OrchestratorError
@@ -119,6 +124,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     start.add_argument("--branch", default="")
     start.add_argument("--repository", default="")
+    start.add_argument("--tracker", default=None, help="tracker provider (local, github, jira, gitlab, azure-devops)")
+    start.add_argument("--tracker-transport", default=None, help="tracker transport (mcp or rest)")
+    start.add_argument(
+        "--tracker-option", action="append", default=[], metavar="KEY=VALUE",
+        help="non-secret provider option; repeatable and overrides lumos.yaml",
+    )
     start.add_argument("--force", action="store_true", help="discard any existing run and start clean")
 
     nxt = sub.add_parser("next", help="get the next directive and write its input envelope")
@@ -159,6 +170,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("skills", help="list discovered skills")
     sub.add_parser("agents", help="list discovered agents")
     sub.add_parser("workers", help="list all discovered skills and agents")
+    sub.add_parser("trackers", help="show tracker providers, capabilities, and selected connection")
+
+    publish = sub.add_parser("publish", help="publish a run summary and optional PR/status to its tracker")
+    publish.add_argument("run")
+    publish.add_argument("--pr-url", default="")
+    publish.add_argument("--transition", default="")
+    publish.add_argument("--tracker", default=None)
+    publish.add_argument("--tracker-transport", default=None)
+    publish.add_argument("--tracker-option", action="append", default=[], metavar="KEY=VALUE")
 
     workflows = sub.add_parser("workflows", help="list workflow definitions")
     workflows.add_argument("--validate", action="store_true", help="check every workflow against installed workers")
@@ -195,12 +215,36 @@ def _engine(paths: Paths, run_id: str) -> Engine:
 
 def _run_id(paths: Paths, reference: str) -> str:
     config = load_project_config(paths)
-    return StateManager.run_id_for(normalize_work_item(reference, config.ticket_prefix))
+    tracker = resolve_tracker_config(config)
+    adapter = create_adapter(tracker.provider, transport=tracker.transport, options=tracker.options)
+    normalized = (
+        normalize_work_item(reference, config.ticket_prefix)
+        if tracker.provider == "local"
+        else adapter.normalise_id(reference) or reference
+    )
+    return StateManager.run_id_for(normalized)
 
 
 def _emit_json(payload: dict[str, Any]) -> None:
     json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
     sys.stdout.write("\n")
+
+
+def _infer_github_repository(root: Path) -> str:
+    """Resolve ``owner/repository`` from the current Git origin when possible."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "config", "--get", "remote.origin.url"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    remote = result.stdout.strip().removesuffix(".git")
+    match = re.search(r"(?:[:/])([^/:]+/[^/]+)$", remote)
+    return match.group(1) if result.returncode == 0 and match else ""
 
 
 def _terminal_exit_code(state: WorkflowState) -> int:
@@ -232,11 +276,24 @@ def cmd_start(args: argparse.Namespace, paths: Paths) -> int:
         )
         return 1
 
+    tracker_config = resolve_tracker_config(
+        config, provider=args.tracker, transport=args.tracker_transport, options=args.tracker_option
+    )
+    if tracker_config.provider == "github" and not tracker_config.options.get("repository"):
+        inferred = _infer_github_repository(paths.root)
+        if inferred:
+            tracker_config = replace(tracker_config, options={**tracker_config.options, "repository": inferred})
+    adapter = create_adapter(
+        tracker_config.provider, transport=tracker_config.transport, options=tracker_config.options
+    )
+    raw_reference = args.work_item
+    work_item = (
+        normalize_work_item(raw_reference, config.ticket_prefix)
+        if tracker_config.provider == "local"
+        else adapter.normalise_id(raw_reference) or raw_reference
+    )
     manager = StateManager(paths)
-    work_item = normalize_work_item(args.work_item, config.ticket_prefix)
     run_id = manager.run_id_for(work_item)
-    if args.force:
-        manager.delete(run_id)
 
     metadata: dict[str, str] = {}
     for pair in args.metadata:
@@ -245,16 +302,24 @@ def cmd_start(args: argparse.Namespace, paths: Paths) -> int:
             raise OrchestratorError(f"--metadata expects KEY=VALUE, got {pair!r}")
         metadata[key.strip()] = value.strip()
 
-    item = WorkItem(
-        id=work_item,
-        title=args.title,
-        type=args.item_type,
-        state=args.item_state,
-        description=args.description,
-        acceptance_criteria=args.acceptance_criteria,
-        url=args.url,
-        metadata=metadata,
-    )
+    if tracker_config.provider == "local":
+        item = WorkItem(id=work_item)
+    else:
+        item = adapter.fetch(raw_reference)
+    # Explicit CLI fields are intentional overrides of provider data. Empty
+    # values preserve the fetched fields.
+    item.title = args.title or item.title
+    item.type = args.item_type or item.type
+    item.state = args.item_state or item.state
+    item.description = args.description or item.description
+    item.acceptance_criteria = args.acceptance_criteria or item.acceptance_criteria
+    item.url = args.url or item.url
+    item.metadata.update(metadata)
+    item.metadata.setdefault("provider", tracker_config.provider)
+    item.metadata["tracker_transport"] = tracker_config.transport
+    item.metadata["tracker_options"] = json.dumps(tracker_config.options, sort_keys=True)
+    if args.force:
+        manager.delete(run_id)
     state, resumed = manager.load_or_create(item, definition, branch=args.branch, repository=args.repository)
     logger = RunLogger(paths.log_file(state.run_id), state.run_id)
     logger.emit(
@@ -275,6 +340,11 @@ def cmd_start(args: argparse.Namespace, paths: Paths) -> int:
             "stages": list(state.order),
             "status": state.status,
             "execution_mode": config.execution_mode,
+            "tracker": {
+                "provider": tracker_config.provider,
+                "transport": adapter.transport_name,
+                "capabilities": adapter.capabilities.to_dict(),
+            },
             "state_file": str(paths.state_file(state.run_id)),
             "log_file": str(paths.log_file(state.run_id)),
         }
@@ -528,6 +598,74 @@ def cmd_workers(args: argparse.Namespace, paths: Paths) -> int:
     return 0
 
 
+def cmd_trackers(args: argparse.Namespace, paths: Paths) -> int:
+    config = load_project_config(paths)
+    selected = resolve_tracker_config(config)
+    rows = []
+    for name, adapter_cls in sorted(list_adapters().items()):
+        adapter = create_adapter(name, transport=selected.transport, options=selected.options)
+        rows.append(
+            {
+                "provider": name,
+                "selected": name == selected.provider,
+                "transport": adapter.transport_name,
+                "connected": True if name == "local" else adapter.connected,
+                "capabilities": adapter_cls.capabilities.to_dict(),
+            }
+        )
+    _emit_json({"ok": True, "selected": selected.provider, "trackers": rows})
+    return 0
+
+
+def cmd_publish(args: argparse.Namespace, paths: Paths) -> int:
+    config = load_project_config(paths)
+    state = StateManager(paths).load(_run_id(paths, args.run))
+    provider = args.tracker or state.work_item.metadata.get("provider") or None
+    saved_transport = state.work_item.metadata.get("tracker_transport") or None
+    tracker_config = resolve_tracker_config(
+        config,
+        provider=provider,
+        transport=args.tracker_transport or saved_transport,
+        options=args.tracker_option,
+    )
+    # Repository/project context resolved from a ticket URL must survive into a
+    # later publish process. Provider metadata contains only non-secret values.
+    options = dict(tracker_config.options)
+    try:
+        options.update(json.loads(state.work_item.metadata.get("tracker_options", "{}")))
+    except (TypeError, json.JSONDecodeError):
+        pass
+    for key in ("repository", "project"):
+        if state.work_item.metadata.get(key):
+            options.setdefault(key, state.work_item.metadata[key])
+    adapter = create_adapter(
+        tracker_config.provider, transport=tracker_config.transport, options=options
+    )
+    if tracker_config.provider == "local":
+        _emit_json({"ok": True, "provider": "local", "operations": [], "message": "local tracker has no remote writes"})
+        return 0
+    operations = []
+    skipped = []
+    if adapter.capabilities.comment:
+        events = list(iter_events(paths.log_file(state.run_id)))
+        adapter.comment(state.work_item.id, render_final_summary(state, events))
+        operations.append("comment")
+    else:
+        skipped.append("comment")
+    if args.pr_url and adapter.capabilities.link_pull_request:
+        adapter.link_pull_request(state.work_item.id, args.pr_url)
+        operations.append("link_pull_request")
+    elif args.pr_url:
+        skipped.append("link_pull_request")
+    if args.transition and adapter.capabilities.transition:
+        adapter.transition(state.work_item.id, args.transition)
+        operations.append("transition")
+    elif args.transition:
+        skipped.append("transition")
+    _emit_json({"ok": True, "provider": tracker_config.provider, "operations": operations, "skipped": skipped})
+    return 0
+
+
 def cmd_workflows(args: argparse.Namespace, paths: Paths) -> int:
     names = list_workflows(paths)
     if not args.validate:
@@ -630,6 +768,8 @@ COMMANDS = {
     "skills": cmd_skills,
     "agents": cmd_agents,
     "workers": cmd_workers,
+    "trackers": cmd_trackers,
+    "publish": cmd_publish,
     "workflows": cmd_workflows,
     "validate": cmd_validate,
     "install": cmd_install,

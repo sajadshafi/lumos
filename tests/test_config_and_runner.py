@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from ai_loom import yamlcompat
-from ai_loom.config import Paths, WorkflowDefinition, load_project_config, load_workflow, normalize_work_item
+from ai_loom.config import (
+    Paths,
+    WorkflowDefinition,
+    load_project_config,
+    load_workflow,
+    normalize_work_item,
+    resolve_tracker_config,
+)
 from ai_loom.errors import ConfigError, SkillNotFoundError
 from ai_loom.models import Verdict
 from ai_loom.retry import RetryPolicy
@@ -249,6 +257,31 @@ class ProjectConfigTests(OrchestratorTestCase):
         config = load_project_config(Paths.resolve(self.tmp))
         self.assertEqual(normalize_work_item("#42", config.ticket_prefix), "C3#42")
         self.assertEqual(config.execution_mode, "step")
+
+    def test_tracker_configuration_is_loaded(self):
+        (self.tmp / "lumos.yaml").write_text(
+            "tracker:\n  provider: github\n  transport: rest\n  options:\n    repository: acme/widget\n",
+            encoding="utf-8",
+        )
+        tracker = load_project_config(Paths.resolve(self.tmp)).tracker
+        self.assertEqual((tracker.provider, tracker.transport), ("github", "rest"))
+        self.assertEqual(tracker.options["repository"], "acme/widget")
+
+    def test_tracker_precedence_is_cli_then_environment_then_file(self):
+        (self.tmp / "lumos.yaml").write_text("tracker:\n  provider: jira\n", encoding="utf-8")
+        config = load_project_config(Paths.resolve(self.tmp))
+        with patch.dict("os.environ", {"LUMOS_TRACKER": "gitlab", "LUMOS_TRACKER_OPTION_PROJECT": "a/b"}):
+            self.assertEqual(resolve_tracker_config(config).provider, "gitlab")
+            resolved = resolve_tracker_config(config, provider="github", options=["repository=o/r"])
+            self.assertEqual(resolved.provider, "github")
+            self.assertEqual(resolved.options["repository"], "o/r")
+
+    def test_secrets_are_rejected_in_tracker_options(self):
+        (self.tmp / "lumos.yaml").write_text(
+            "tracker:\n  provider: github\n  options:\n    token: do-not-store-this\n", encoding="utf-8"
+        )
+        with self.assertRaises(ConfigError):
+            load_project_config(Paths.resolve(self.tmp))
 
 
 class RetryPolicyTests(unittest.TestCase):

@@ -8,7 +8,36 @@ does more than the local default.
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
+from typing import Any, Protocol
+
+from ..errors import UnsupportedCapabilityError
 from ..models import WorkUnit
+
+
+@dataclass(frozen=True)
+class TrackerCapabilities:
+    """Operations supported by a tracker adapter and its transport."""
+
+    fetch: bool = True
+    comment: bool = False
+    link_pull_request: bool = False
+    transition: bool = False
+
+    def to_dict(self) -> dict[str, bool]:
+        return asdict(self)
+
+
+class TrackerTransport(Protocol):
+    """Provider I/O boundary used by REST, MCP bridges, and test fakes."""
+
+    name: str
+
+    def call(self, provider: str, operation: str, params: dict[str, Any]) -> Any:
+        """Execute one semantic provider operation and return its raw payload."""
+
+    def connected(self, provider: str | None = None) -> bool:
+        """Return whether required transport configuration appears available."""
 
 
 class TrackerAdapter:
@@ -22,6 +51,30 @@ class TrackerAdapter:
 
     #: Short name used in the adapter registry and any ``--tracker`` selection.
     name: str = "base"
+    capabilities = TrackerCapabilities()
+
+    def __init__(
+        self,
+        options: dict[str, str] | None = None,
+        transport: TrackerTransport | None = None,
+    ) -> None:
+        self.options = dict(options or {})
+        self.transport = transport
+
+    @property
+    def transport_name(self) -> str:
+        return getattr(self.transport, "name", "none")
+
+    @property
+    def connected(self) -> bool:
+        return bool(self.transport and self.transport.connected(self.name))
+
+    def _call(self, operation: str, **params: Any) -> Any:
+        if self.transport is None:
+            raise UnsupportedCapabilityError(
+                f"tracker {self.name!r} has no transport; configure tracker.transport"
+            )
+        return self.transport.call(self.name, operation, {"options": self.options, **params})
 
     def fetch(self, work_id: str) -> WorkUnit:
         """Return the work unit for ``work_id``.
@@ -45,3 +98,6 @@ class TrackerAdapter:
 
     def link_pull_request(self, work_id: str, pr_url: str) -> None:
         """Associate a pull request with the work item. No-op by default."""
+
+    def transition(self, work_id: str, state: str) -> None:
+        """Move a ticket to ``state``. No-op by default."""

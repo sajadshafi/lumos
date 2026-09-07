@@ -26,7 +26,7 @@ know or care which one is driving.
 
 No. The default `local` tracker needs nothing external — the work unit is whatever
 you pass on the command line. Trackers are pluggable via `TrackerAdapter`
-(`src/ai_loom/adapters/`); an `azure-devops` stub shows the shape. Tracker-specific
+(`src/ai_loom/adapters/`); GitHub, Jira, GitLab, and Azure DevOps adapters are included. Tracker-specific
 fields ride along in a free-form `--metadata key=value` map.
 
 ### What happens when a report is malformed?
