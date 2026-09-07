@@ -254,9 +254,7 @@ class Engine:
                 detail={"returns_to": stage.returns_to},
             )
 
-    def _on_changes_requested(
-        self, stage: Stage, stage_def: StageDefinition, result: InvocationResult
-    ) -> None:
+    def _on_changes_requested(self, stage: Stage, stage_def: StageDefinition, result: InvocationResult) -> None:
         origin_def = self.definition.stage(stage.key)
         remediation = origin_def.remediation if origin_def else None
 
@@ -431,7 +429,10 @@ class Engine:
         self._pop(stage_key)
         self.state_manager.save(self.state)
         self.logger.emit(
-            "stage_skipped", stage=stage_key, skill=stage.skill, status=StageStatus.SKIPPED.value,
+            "stage_skipped",
+            stage=stage_key,
+            skill=stage.skill,
+            status=StageStatus.SKIPPED.value,
             detail={"reason": reason},
         )
         return self.next_directive()

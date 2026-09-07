@@ -102,9 +102,7 @@ class StateManager:
     def load(self, run_id: str) -> WorkflowState:
         path = self._paths.state_file(run_id)
         if not path.is_file():
-            raise StateError(
-                f"no state for run {run_id!r} at {path}. Start it with: lumos start {run_id}"
-            )
+            raise StateError(f"no state for run {run_id!r} at {path}. Start it with: lumos start {run_id}")
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:

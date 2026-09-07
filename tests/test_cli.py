@@ -50,9 +50,7 @@ class LifecycleTests(CliTestCase):
         for name in ("reviewer-agent", "fixer-agent"):
             agent_dir = self.paths.agents_dir / name
             agent_dir.mkdir(parents=True)
-            (agent_dir / "AGENT.md").write_text(
-                f"---\nname: {name}\n---\n", encoding="utf-8"
-            )
+            (agent_dir / "AGENT.md").write_text(f"---\nname: {name}\n---\n", encoding="utf-8")
         (self.paths.workflows_dir / "agent-remediation.yaml").write_text(
             "name: agent-remediation\nstages:\n"
             "  - agent: reviewer-agent\n"
@@ -65,9 +63,7 @@ class LifecycleTests(CliTestCase):
         directive = self.run_json("next", "TC-2")[1]
         with open(directive["report_path"], "w", encoding="utf-8") as handle:
             handle.write(report(next_skill="fixer-agent — changes requested"))
-        _, payload = self.run_json(
-            "record", "TC-2", "--stage", "reviewer-agent", "--report", directive["report_path"]
-        )
+        _, payload = self.run_json("record", "TC-2", "--stage", "reviewer-agent", "--report", directive["report_path"])
         self.assertEqual(payload["directive"]["action"], "invoke_agent")
         self.assertEqual(payload["directive"]["worker"], "fixer-agent")
 
@@ -97,8 +93,10 @@ class LifecycleTests(CliTestCase):
         self.assertEqual(payload["skill"], "feature-planner")
         self.assertEqual(payload["skill_command"], "/feature-planner")
         self.assertIn("## Objective", payload["envelope"])
-        self.assertTrue(self.paths.root.joinpath(payload["envelope_path"]).is_file()
-                        or payload["envelope_path"].startswith(str(self.tmp)))
+        self.assertTrue(
+            self.paths.root.joinpath(payload["envelope_path"]).is_file()
+            or payload["envelope_path"].startswith(str(self.tmp))
+        )
 
     def test_next_is_idempotent(self):
         # Inspecting the run must not inflate the attempt count.
@@ -115,8 +113,7 @@ class LifecycleTests(CliTestCase):
         with open(report_path, "w", encoding="utf-8") as handle:
             handle.write(report(next_skill="coding"))
 
-        code, payload = self.run_json("record", "AB-273", "--stage", "feature-planner",
-                                      "--report", report_path)
+        code, payload = self.run_json("record", "AB-273", "--stage", "feature-planner", "--report", report_path)
         self.assertEqual(code, 0)
         self.assertEqual(payload["verdict"], "success")
         self.assertEqual(payload["directive"]["skill"], "coding")
@@ -129,8 +126,7 @@ class LifecycleTests(CliTestCase):
                 break
             with open(directive["report_path"], "w", encoding="utf-8") as handle:
                 handle.write(report(next_skill="None — done"))
-            self.run_json("record", "AB-273", "--stage", directive["stage_key"],
-                          "--report", directive["report_path"])
+            self.run_json("record", "AB-273", "--stage", directive["stage_key"], "--report", directive["report_path"])
         self.assertEqual(directive["action"], "complete")
 
     def test_record_of_a_malformed_report_returns_violations(self):
@@ -138,8 +134,9 @@ class LifecycleTests(CliTestCase):
         directive = self.run_json("next", "AB-273")[1]
         with open(directive["report_path"], "w", encoding="utf-8") as handle:
             handle.write("nope")
-        _, payload = self.run_json("record", "AB-273", "--stage", "feature-planner",
-                                   "--report", directive["report_path"])
+        _, payload = self.run_json(
+            "record", "AB-273", "--stage", "feature-planner", "--report", directive["report_path"]
+        )
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["verdict"], "failed")
         self.assertTrue(payload["violations"])
@@ -148,8 +145,9 @@ class LifecycleTests(CliTestCase):
     def test_failed_flag_records_an_invocation_that_never_ran(self):
         self.run_json("start", "AB#273")
         self.run_json("next", "AB-273")
-        _, payload = self.run_json("record", "AB-273", "--stage", "feature-planner",
-                                   "--failed", "--error", "skill timed out")
+        _, payload = self.run_json(
+            "record", "AB-273", "--stage", "feature-planner", "--failed", "--error", "skill timed out"
+        )
         self.assertEqual(payload["verdict"], "failed")
 
     def test_record_without_report_is_a_usage_error(self):
@@ -171,8 +169,7 @@ class ExitCodeTests(CliTestCase):
         directive = self.run_json("next", "AB-273")[1]
         with open(directive["report_path"], "w", encoding="utf-8") as handle:
             handle.write(report(next_skill="None — blocked, need the fee schedule"))
-        code, _ = self.run_json("record", "AB-273", "--stage", "feature-planner",
-                                "--report", directive["report_path"])
+        code, _ = self.run_json("record", "AB-273", "--stage", "feature-planner", "--report", directive["report_path"])
         self.assertEqual(code, 2)
 
     def test_status_of_a_blocked_run_exits_two(self):
@@ -271,8 +268,7 @@ class ControlCommandTests(CliTestCase):
 
     def test_skip_advances(self):
         self.run_json("start", "AB#273")
-        _, payload = self.run_json("skip", "AB-273", "--stage", "feature-planner",
-                                   "--reason", "plan already written")
+        _, payload = self.run_json("skip", "AB-273", "--stage", "feature-planner", "--reason", "plan already written")
         self.assertEqual(payload["directive"]["skill"], "coding")
 
 

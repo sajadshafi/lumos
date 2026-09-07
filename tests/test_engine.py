@@ -24,9 +24,7 @@ class LinearProgressionTests(OrchestratorTestCase):
     def test_stages_advance_in_definition_order(self):
         engine = self.make_engine()
         expected = ["coding", "testing", "reviewer", "post-feature-implementation"]
-        for stage_key, following in zip(
-            ["feature-planner", "coding", "testing", "reviewer"], expected
-        ):
+        for stage_key, following in zip(["feature-planner", "coding", "testing", "reviewer"], expected):
             directive = self.run_stage(engine, stage_key, report(next_skill=following))
             self.assertEqual(directive.skill, following, f"after {stage_key}")
 
@@ -36,9 +34,7 @@ class LinearProgressionTests(OrchestratorTestCase):
             directive = self.run_stage(engine, key, report(next_skill="None — done"))
         self.assertEqual(directive.action, Action.COMPLETE.value)
         self.assertEqual(engine.state.status, WorkflowStatus.COMPLETED.value)
-        self.assertTrue(
-            all(s.status == StageStatus.COMPLETED.value for s in engine.state.stages.values())
-        )
+        self.assertTrue(all(s.status == StageStatus.COMPLETED.value for s in engine.state.stages.values()))
 
     def test_skill_recommendation_does_not_override_the_workflow(self):
         # §3 of the contract: Next Skill is advisory. The definition dispatches.
@@ -108,8 +104,7 @@ class RemediationLoopTests(OrchestratorTestCase):
         self.run_stage(engine, "reviewer", report(next_skill="fixer"))
         self.assertEqual(
             engine.state.order,
-            ["feature-planner", "coding", "testing", "reviewer", "fixer@reviewer",
-             "post-feature-implementation"],
+            ["feature-planner", "coding", "testing", "reviewer", "fixer@reviewer", "post-feature-implementation"],
         )
 
     def test_unmodelled_routing_continues_linearly_and_records_it(self):

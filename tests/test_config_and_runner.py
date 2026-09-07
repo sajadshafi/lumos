@@ -33,9 +33,8 @@ stages:
         self.assertEqual(data["stages"][1]["remediation"]["skill"], "fixer")
 
     def test_scalar_types(self):
-        data = yamlcompat.load("a: 1\nb: 2.5\nc: true\nd: false\ne: null\nf: text\ng: \"quoted: yes\"\n")
-        self.assertEqual(data, {"a": 1, "b": 2.5, "c": True, "d": False, "e": None,
-                                "f": "text", "g": "quoted: yes"})
+        data = yamlcompat.load('a: 1\nb: 2.5\nc: true\nd: false\ne: null\nf: text\ng: "quoted: yes"\n')
+        self.assertEqual(data, {"a": 1, "b": 2.5, "c": True, "d": False, "e": None, "f": "text", "g": "quoted: yes"})
 
     def test_comments_are_ignored(self):
         data = yamlcompat.load("# leading\nname: x  # trailing\n")
@@ -67,10 +66,13 @@ stages:
 class WorkflowDefinitionTests(OrchestratorTestCase):
     def test_agent_stage_and_agent_remediation_parse(self):
         definition = WorkflowDefinition.from_dict(
-            {"name": "mixed", "stages": [
-                {"agent": "planner"},
-                {"skill": "reviewer", "remediation": {"agent": "fixer"}},
-            ]}
+            {
+                "name": "mixed",
+                "stages": [
+                    {"agent": "planner"},
+                    {"skill": "reviewer", "remediation": {"agent": "fixer"}},
+                ],
+            }
         )
         self.assertEqual(definition.stages[0].kind, "agent")
         self.assertEqual(definition.stages[1].remediation.kind, "agent")
@@ -81,10 +83,13 @@ class WorkflowDefinitionTests(OrchestratorTestCase):
 
     def test_explicit_stage_id_allows_reusing_a_worker(self):
         definition = WorkflowDefinition.from_dict(
-            {"name": "repeat", "stages": [
-                {"id": "review-one", "agent": "reviewer"},
-                {"id": "review-two", "agent": "reviewer"},
-            ]}
+            {
+                "name": "repeat",
+                "stages": [
+                    {"id": "review-one", "agent": "reviewer"},
+                    {"id": "review-two", "agent": "reviewer"},
+                ],
+            }
         )
         self.assertEqual([s.key for s in definition.stages], ["review-one", "review-two"])
 
@@ -136,14 +141,10 @@ class SkillDiscoveryTests(OrchestratorTestCase):
     def test_discovers_agents_and_validates_mixed_workers(self):
         directory = self.paths.agents_dir / "planner"
         directory.mkdir(parents=True)
-        (directory / "AGENT.md").write_text(
-            "---\nname: planner\ndescription: Plans work.\n---\n", encoding="utf-8"
-        )
+        (directory / "AGENT.md").write_text("---\nname: planner\ndescription: Plans work.\n---\n", encoding="utf-8")
         found = self.runner.discover_agents()
         self.assertTrue(found["planner"].invokable)
-        self.assertEqual(
-            self.runner.validate_workers((("agent", "planner"), ("skill", "coding"))), []
-        )
+        self.assertEqual(self.runner.validate_workers((("agent", "planner"), ("skill", "coding"))), [])
 
     def test_discovers_invokable_skills(self):
         found = self.runner.discover()
@@ -269,9 +270,7 @@ class RetryPolicyTests(unittest.TestCase):
 
     def test_blocked_is_not_retried_by_default(self):
         self.assertFalse(RetryPolicy(max_attempts=3).should_retry(Verdict.BLOCKED, 1))
-        self.assertTrue(
-            RetryPolicy(max_attempts=3, retry_on_blocked=True).should_retry(Verdict.BLOCKED, 1)
-        )
+        self.assertTrue(RetryPolicy(max_attempts=3, retry_on_blocked=True).should_retry(Verdict.BLOCKED, 1))
 
     def test_zero_attempts_is_rejected(self):
         with self.assertRaises(ValueError):

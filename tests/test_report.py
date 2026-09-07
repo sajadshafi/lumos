@@ -57,8 +57,9 @@ class NextSkillTests(unittest.TestCase):
         self.assertEqual(parsed.next_skill, "fixer")
 
     def test_backticked_name(self):
-        self.assertEqual(parse(report(next_skill="`post-feature-implementation`")).next_skill,
-                         "post-feature-implementation")
+        self.assertEqual(
+            parse(report(next_skill="`post-feature-implementation`")).next_skill, "post-feature-implementation"
+        )
 
     def test_bulleted_name(self):
         self.assertEqual(parse(report(next_skill="- reviewer")).next_skill, "reviewer")

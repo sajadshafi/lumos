@@ -214,9 +214,7 @@ class Paths:
         )
 
     @staticmethod
-    def _resolve_skills_dir(
-        base: Path, skills_dir: str | os.PathLike[str] | None
-    ) -> Path:
+    def _resolve_skills_dir(base: Path, skills_dir: str | os.PathLike[str] | None) -> Path:
         if skills_dir:
             return Path(skills_dir)
         env = os.environ.get("LUMOS_SKILLS_DIR") or os.environ.get("LOOM_SKILLS_DIR")
@@ -233,9 +231,7 @@ class Paths:
         return local
 
     @staticmethod
-    def _resolve_agents_dir(
-        base: Path, agents_dir: str | os.PathLike[str] | None
-    ) -> Path:
+    def _resolve_agents_dir(base: Path, agents_dir: str | os.PathLike[str] | None) -> Path:
         if agents_dir:
             return Path(agents_dir)
         env = os.environ.get("LUMOS_AGENTS_DIR")

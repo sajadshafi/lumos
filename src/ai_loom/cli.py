@@ -255,9 +255,7 @@ def cmd_start(args: argparse.Namespace, paths: Paths) -> int:
         url=args.url,
         metadata=metadata,
     )
-    state, resumed = manager.load_or_create(
-        item, definition, branch=args.branch, repository=args.repository
-    )
+    state, resumed = manager.load_or_create(item, definition, branch=args.branch, repository=args.repository)
     logger = RunLogger(paths.log_file(state.run_id), state.run_id)
     logger.emit(
         "workflow_resumed" if resumed else "workflow_started",
@@ -322,7 +320,8 @@ def cmd_next(args: argparse.Namespace, paths: Paths) -> int:
                 "worker_type": stage_def.kind,
                 "skill_command": f"/{stage_def.skill}" if stage_def.kind == "skill" else None,
                 "agent_path": str(engine.runner.get(stage_def.worker, "agent").path)
-                if stage_def.kind == "agent" else None,
+                if stage_def.kind == "agent"
+                else None,
                 "envelope_path": str(envelope),
                 "report_path": str(report_path),
                 "envelope": request.render(),
@@ -514,8 +513,13 @@ def cmd_workers(args: argparse.Namespace, paths: Paths) -> int:
         {
             "ok": True,
             "workers": [
-                {"type": kind, "name": m.name, "invokable": m.invokable,
-                 "description": m.description, "path": str(m.path)}
+                {
+                    "type": kind,
+                    "name": m.name,
+                    "invokable": m.invokable,
+                    "description": m.description,
+                    "path": str(m.path),
+                }
                 for kind, group in (("skill", skills), ("agent", agents))
                 for m in group.values()
             ],
@@ -593,10 +597,12 @@ def cmd_install(args: argparse.Namespace, paths: Paths) -> int:
 
     skill_file = destination / "SKILL.md"
     if skill_file.exists() and not args.force:
-        _emit_json({
-            "ok": False,
-            "error": f"Lumos is already installed at {destination}; use --force to update it",
-        })
+        _emit_json(
+            {
+                "ok": False,
+                "error": f"Lumos is already installed at {destination}; use --force to update it",
+            }
+        )
         return 1
 
     source = resources.files("ai_loom").joinpath("resources", "lumos")
@@ -636,8 +642,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return COMMANDS[args.command](args, paths)
     except OrchestratorError as exc:
-        _emit_json({"ok": False, "error": str(exc), "error_type": type(exc).__name__,
-                    "recoverable": exc.recoverable})
+        _emit_json({"ok": False, "error": str(exc), "error_type": type(exc).__name__, "recoverable": exc.recoverable})
         return 1
 
 

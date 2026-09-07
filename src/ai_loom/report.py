@@ -115,9 +115,7 @@ def parse(text: str) -> SkillReport:
 
     missing = [s for s in REQUIRED_SECTIONS if s not in report.sections]
     if missing:
-        report.violations.append(
-            "missing required section(s): " + ", ".join(f"# {m}" for m in missing)
-        )
+        report.violations.append("missing required section(s): " + ", ".join(f"# {m}" for m in missing))
 
     present_expected = [s for s in found_order if s in REQUIRED_SECTIONS]
     expected_sequence = [s for s in REQUIRED_SECTIONS if s in present_expected]

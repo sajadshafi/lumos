@@ -42,12 +42,9 @@ def render_state_yaml(state: WorkflowState) -> str:
         "next_step": state.next_step,
         "attempts": {key: stage.attempt_count for key, stage in state.stages.items() if stage.attempts},
         "summary": {key: stage.summary for key, stage in state.stages.items() if stage.summary},
-        "artifacts": {
-            key: stage.deliverables for key, stage in state.stages.items() if stage.deliverables
-        },
+        "artifacts": {key: stage.deliverables for key, stage in state.stages.items() if stage.deliverables},
         "errors": [
-            {"stage": e["stage"], "message": e["message"], "recoverable": e["recoverable"]}
-            for e in state.errors
+            {"stage": e["stage"], "message": e["message"], "recoverable": e["recoverable"]} for e in state.errors
         ],
         "workflow_status": state.status,
     }
@@ -110,10 +107,7 @@ def render_final_summary(state: WorkflowState, events: list[dict[str, Any]]) -> 
 
     total_attempts = sum(stage.attempt_count for stage in state.stages.values())
     durations = [
-        a.duration_seconds
-        for stage in state.stages.values()
-        for a in stage.attempts
-        if a.duration_seconds is not None
+        a.duration_seconds for stage in state.stages.values() for a in stage.attempts if a.duration_seconds is not None
     ]
     wall = state.updated_at - state.created_at
 
@@ -145,9 +139,7 @@ def render_final_summary(state: WorkflowState, events: list[dict[str, Any]]) -> 
         summary = (stage.summary or "—").replace("\n", " ").replace("|", "\\|")
         if len(summary) > 160:
             summary = summary[:157] + "..."
-        lines.append(
-            f"| `{key}` | `{stage.skill}` | {stage.status} | {stage.attempt_count} | {summary} |"
-        )
+        lines.append(f"| `{key}` | `{stage.skill}` | {stage.status} | {stage.attempt_count} | {summary} |")
 
     deliverables = [(k, d) for k in state.order for d in (state.stages[k].deliverables if k in state.stages else [])]
     if deliverables:

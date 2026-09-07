@@ -190,9 +190,7 @@ class SkillRunner:
             cache = self._cache
         if meta is None:
             available = ", ".join(sorted(n for n, m in cache.items() if m.invokable)) or "none"
-            raise SkillNotFoundError(
-                f"{label} {skill!r} not found in {root}. Invokable {label}s: {available}"
-            )
+            raise SkillNotFoundError(f"{label} {skill!r} not found in {root}. Invokable {label}s: {available}")
         if not meta.invokable:
             raise SkillNotFoundError(
                 f"{label} {skill!r} exists at {meta.path} but has no "
@@ -338,8 +336,7 @@ class SkillRunner:
                 report=report,
                 report_path=report_path,
                 violations=list(report.violations),
-                error="report does not conform to the output contract: "
-                + "; ".join(report.violations),
+                error="report does not conform to the output contract: " + "; ".join(report.violations),
             )
         return InvocationResult(
             skill=skill,

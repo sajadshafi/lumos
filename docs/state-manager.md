@@ -60,7 +60,10 @@ set_status(state, status, save=True)
 
 ```python
 temp = path.with_suffix(f".{os.getpid()}.tmp")
-write(temp); flush(); fsync(); os.replace(temp, path)
+write(temp)
+flush()
+fsync()
+os.replace(temp, path)
 ```
 
 A run is interrupted by Ctrl-C, a closed terminal, or a crashed session more
@@ -77,7 +80,7 @@ cannot leave a name that collides with the next one.
 
 ```python
 stage.attempts = [
-    Attempt(number=1, verdict="failed",  error="missing # Risks", duration_seconds=41.2),
+    Attempt(number=1, verdict="failed", error="missing # Risks", duration_seconds=41.2),
     Attempt(number=2, verdict="success", duration_seconds=180.5),
 ]
 ```
