@@ -175,7 +175,13 @@ class RuntimeInstaller:
             "files": _hashes(source_files),
         }
         _atomic_write(self.destination / MANIFEST_NAME, json.dumps(manifest, indent=2).encode() + b"\n")
-        return {**plan.to_dict(), "action": "installed" if plan.action == "install" else "updated", "applied": True}
+        completed = {
+            "install": ("installed", "integration installed"),
+            "repair-manifest": ("updated", "ownership manifest added"),
+            "update": ("updated", "integration updated"),
+        }
+        action, reason = completed[plan.action]
+        return {**plan.to_dict(), "action": action, "reason": reason, "applied": True}
 
     def verify(self) -> Verification:
         if not self.destination.exists():

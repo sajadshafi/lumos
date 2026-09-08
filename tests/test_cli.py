@@ -258,6 +258,7 @@ class InspectionTests(CliTestCase):
             code, output = self.run_cli("install", "--dry-run")
         self.assertEqual(code, 0)
         self.assertIn("Installation plan", output)
+        self.assertIn("~ codex: install", output)
         self.assertIn("codex: install", output)
         self.assertFalse((codex_home / "skills" / "lumos").exists())
 
