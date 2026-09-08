@@ -38,6 +38,7 @@ class RuntimeInstallerTests(unittest.TestCase):
     def test_install_is_atomic_managed_and_idempotent(self):
         first = self.installer.install(self.installer.plan(selected=True))
         self.assertTrue(first["applied"])
+        self.assertEqual(first["reason"], "integration installed")
         self.assertTrue((self.destination / "SKILL.md").is_file())
         manifest = json.loads((self.destination / MANIFEST_NAME).read_text(encoding="utf-8"))
         self.assertEqual(manifest["runtime"], "codex")
