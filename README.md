@@ -11,11 +11,19 @@ the same workflow portable across Codex, Claude Code, Copilot, and other hosts.
 
 ## Install
 
-From GitHub (until the first PyPI release):
+Recommended installation from PyPI:
+
+```bash
+pipx install lumos
+lumos install             # auto-detect Codex and Claude Code
+lumos doctor
+```
+
+Until the first PyPI release, install the same CLI directly from GitHub:
 
 ```bash
 pipx install git+https://github.com/sajadshafi/lumos.git
-lumos install codex        # or: lumos install claude
+lumos install
 lumos --version
 ```
 
@@ -28,7 +36,12 @@ python -m pip install -e .
 lumos install codex --force
 ```
 
-Restart or reload the AI runtime after installing its skill. You can then run:
+Install a single integration explicitly with `lumos install codex` or
+`lumos install claude`. Use `lumos install --dry-run` to preview automatic
+detection and [the installation guide](docs/installation.md) for update,
+diagnostic, and safe-uninstall commands.
+
+Restart or reload each configured AI runtime after installation. You can then run:
 
 ```text
 /lumos TC#123
@@ -120,6 +133,7 @@ reports flow downstream and are validated before the workflow advances.
 - [`templates/agent/AGENT.md`](templates/agent/AGENT.md) — agent starter
 - [`templates/workflow.yaml`](templates/workflow.yaml) — mixed workflow starter
 - [Getting started](docs/getting-started.md)
+- [Installation and runtime management](docs/installation.md)
 - [Configuration](docs/configuration.md)
 - [Worker authoring](docs/worker-authoring.md)
 - [Workflow design](docs/workflow-design.md)
