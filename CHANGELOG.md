@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Make `lumos install` auto-detect and configure supported AI runtimes.
+- Add safe installation planning, dry-run, forced updates, managed manifests, and idempotency.
+- Add `lumos uninstall` with file-level ownership checks and dry-run support.
+- Add `lumos doctor` human and JSON diagnostics for projects, runtimes, MCP, and trackers.
+- Preserve explicit `lumos install codex` and `lumos install claude` compatibility.
+
 ## 0.3.0
 
 - Add provider-neutral tracker configuration with CLI and environment overrides.

@@ -25,12 +25,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
 from dataclasses import replace
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +46,7 @@ from .engine import Engine
 from .errors import OrchestratorError
 from .logging_ import RunLogger, iter_events, render_timeline
 from .models import Action, StageStatus, Verdict, WorkflowState, WorkflowStatus, WorkItem
+from .runtime_installers import create_runtime_installer, runtime_installers
 from .skill_runner import InvocationResult, SkillRunner
 from .state_manager import StateManager
 from .summary import render_final_summary, render_state_yaml, render_status
@@ -189,10 +188,22 @@ def build_parser() -> argparse.ArgumentParser:
     validate = sub.add_parser("validate", help="validate one workflow definition")
     validate.add_argument("workflow")
 
-    install = sub.add_parser("install", help="install the /lumos skill into an AI runtime")
-    install.add_argument("runtime", choices=("codex", "claude"))
+    install = sub.add_parser("install", help="install Lumos into detected AI runtimes")
+    install.add_argument("runtime", nargs="?", choices=tuple(sorted(runtime_installers())))
     install.add_argument("--destination", default=None, help="override the runtime skill directory")
     install.add_argument("--force", action="store_true", help="replace an existing Lumos skill")
+    install.add_argument("--all", action="store_true", help="install every supported runtime integration")
+    install.add_argument("--dry-run", action="store_true", help="show changes without writing files")
+    install.add_argument("--json", action="store_true", help="emit machine-readable results")
+
+    uninstall = sub.add_parser("uninstall", help="remove Lumos-managed runtime integrations")
+    uninstall.add_argument("runtime", nargs="?", choices=tuple(sorted(runtime_installers())))
+    uninstall.add_argument("--all", action="store_true", help="uninstall every managed integration")
+    uninstall.add_argument("--dry-run", action="store_true", help="show removals without changing files")
+    uninstall.add_argument("--json", action="store_true", help="emit machine-readable results")
+
+    doctor = sub.add_parser("doctor", help="diagnose Lumos project and runtime integration setup")
+    doctor.add_argument("--json", action="store_true", help="emit stable machine-readable diagnostics")
 
     return parser
 
@@ -726,32 +737,201 @@ def cmd_validate(args: argparse.Namespace, paths: Paths) -> int:
 
 
 def cmd_install(args: argparse.Namespace, paths: Paths) -> int:
-    if args.destination:
-        destination = Path(args.destination).expanduser()
-    elif args.runtime == "codex":
-        codex_home = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
-        destination = codex_home / "skills" / "lumos"
-    else:
-        destination = Path.home() / ".claude" / "skills" / "lumos"
+    if args.runtime and args.all:
+        raise OrchestratorError("choose a runtime or --all, not both")
+    if args.destination and not args.runtime:
+        raise OrchestratorError("--destination requires an explicit runtime")
 
-    skill_file = destination / "SKILL.md"
-    if skill_file.exists() and not args.force:
-        _emit_json(
+    names = [args.runtime] if args.runtime else sorted(runtime_installers())
+    results = []
+    failed = False
+    for name in names:
+        try:
+            destination = Path(args.destination).expanduser() if args.destination else None
+            installer = create_runtime_installer(name, destination=destination)
+            detected, _ = installer.detect()
+            selected = bool(args.runtime or args.all or detected)
+            plan = installer.plan(force=args.force, selected=selected)
+            result = installer.install(plan, dry_run=args.dry_run)
+            results.append(result)
+            failed = failed or plan.action == "conflict"
+        except Exception as exc:
+            results.append({"runtime": name, "action": "failed", "applied": False, "error": str(exc)})
+            failed = True
+
+    payload = {"ok": not failed, "dry_run": args.dry_run, "results": results}
+    if args.runtime and results:
+        payload.update({"runtime": args.runtime, "installed": results[0].get("destination", "")})
+    if args.json or args.runtime:
+        _emit_json(payload)
+    else:
+        print(_render_runtime_results("Installation plan" if args.dry_run else "Runtime installation", results))
+    return 1 if failed else 0
+
+
+def cmd_uninstall(args: argparse.Namespace, paths: Paths) -> int:
+    if not args.runtime and not args.all:
+        raise OrchestratorError("choose a runtime or use --all")
+    if args.runtime and args.all:
+        raise OrchestratorError("choose a runtime or --all, not both")
+    names = [args.runtime] if args.runtime else sorted(runtime_installers())
+    results = []
+    failed = False
+    for name in names:
+        try:
+            results.append(create_runtime_installer(name).uninstall(dry_run=args.dry_run))
+        except Exception as exc:
+            results.append({"runtime": name, "action": "failed", "applied": False, "error": str(exc)})
+            failed = True
+    payload = {"ok": not failed, "dry_run": args.dry_run, "results": results}
+    if args.json:
+        _emit_json(payload)
+    else:
+        print(_render_runtime_results("Uninstall plan" if args.dry_run else "Runtime uninstall", results))
+    return 1 if failed else 0
+
+
+def cmd_doctor(args: argparse.Namespace, paths: Paths) -> int:
+    checks: list[dict[str, Any]] = [
+        {
+            "name": "cli",
+            "status": "healthy",
+            "ok": True,
+            "detail": (
+                f"Lumos {__version__} on Python "
+                f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+            ),
+            "remediation": "",
+        }
+    ]
+    try:
+        config = load_project_config(paths)
+        checks.append(
             {
-                "ok": False,
-                "error": f"Lumos is already installed at {destination}; use --force to update it",
+                "name": "project-config",
+                "status": "healthy",
+                "ok": True,
+                "detail": f"configuration resolved from {paths.root}",
+                "remediation": "",
             }
         )
-        return 1
+    except OrchestratorError as exc:
+        config = None
+        checks.append(
+            {
+                "name": "project-config",
+                "status": "error",
+                "ok": False,
+                "detail": str(exc),
+                "remediation": "fix lumos.yaml and run lumos doctor again",
+            }
+        )
 
-    source = resources.files("ai_loom").joinpath("resources", "lumos")
-    destination.joinpath("agents").mkdir(parents=True, exist_ok=True)
-    skill_file.write_text(source.joinpath("SKILL.md").read_text(encoding="utf-8"), encoding="utf-8")
-    destination.joinpath("agents", "openai.yaml").write_text(
-        source.joinpath("agents", "openai.yaml").read_text(encoding="utf-8"), encoding="utf-8"
-    )
-    _emit_json({"ok": True, "runtime": args.runtime, "installed": str(destination)})
-    return 0
+    for kind, directory in (("skills", paths.skills_dir), ("agents", paths.agents_dir)):
+        exists = directory.is_dir()
+        checks.append(
+            {
+                "name": f"{kind}-directory",
+                "status": "healthy" if exists else "warning",
+                "ok": exists,
+                "detail": str(directory),
+                "remediation": "" if exists else f"create {directory} or configure --{kind}-dir",
+            }
+        )
+
+    for name in sorted(runtime_installers()):
+        try:
+            installer = create_runtime_installer(name)
+            detected, evidence = installer.detect()
+            verification = installer.verify()
+            relevant = detected or verification.status not in {"missing"}
+            checks.append(
+                {
+                    "name": f"runtime-{name}",
+                    "status": verification.status if relevant else "not-detected",
+                    "ok": verification.ok if relevant else True,
+                    "detail": evidence
+                    if not relevant
+                    else "; ".join(verification.problems) or verification.destination,
+                    "remediation": verification.remediation if relevant else "",
+                    "installed_version": verification.installed_version,
+                }
+            )
+        except Exception as exc:
+            checks.append(
+                {
+                    "name": f"runtime-{name}",
+                    "status": "error",
+                    "ok": False,
+                    "detail": str(exc),
+                    "remediation": f"inspect the runtime home, then run lumos install {name} --force",
+                    "installed_version": "",
+                }
+            )
+
+    if config is not None:
+        try:
+            tracker = resolve_tracker_config(config)
+            adapter = create_adapter(tracker.provider, transport=tracker.transport, options=tracker.options)
+            connected = tracker.provider == "local" or adapter.connected
+            checks.append(
+                {
+                    "name": "tracker",
+                    "status": "healthy" if connected else "warning",
+                    "ok": connected,
+                    "detail": (
+                        f"provider={tracker.provider}, transport={adapter.transport_name}, "
+                        f"connected={str(connected).lower()}"
+                    ),
+                    "remediation": "" if connected else "configure the runtime MCP bridge or provider REST credentials",
+                }
+            )
+        except Exception as exc:
+            checks.append(
+                {
+                    "name": "tracker",
+                    "status": "error",
+                    "ok": False,
+                    "detail": str(exc),
+                    "remediation": "fix tracker configuration and run lumos doctor again",
+                }
+            )
+
+    ok = all(check["status"] != "error" for check in checks)
+    payload = {"schema_version": 1, "ok": ok, "checks": checks}
+    if args.json:
+        _emit_json(payload)
+    else:
+        print(_render_doctor(checks))
+    return 0 if ok else 1
+
+
+def _render_runtime_results(title: str, results: list[dict[str, Any]]) -> str:
+    lines = [title, ""]
+    symbols = {
+        "installed": "+",
+        "updated": "+",
+        "repair-manifest": "+",
+        "unchanged": "=",
+        "skipped": "-",
+        "conflict": "!",
+    }
+    for result in results:
+        action = str(result.get("action", "unknown"))
+        symbol = symbols.get(action, "!")
+        detail = result.get("reason") or result.get("error") or result.get("destination", "")
+        lines.append(f"{symbol} {result.get('runtime', 'unknown')}: {action} — {detail}")
+    return "\n".join(lines)
+
+
+def _render_doctor(checks: list[dict[str, Any]]) -> str:
+    lines = ["Lumos doctor", ""]
+    for check in checks:
+        symbol = "+" if check["ok"] else ("!" if check["status"] == "error" else "-")
+        lines.append(f"{symbol} {check['name']}: {check['status']} — {check['detail']}")
+        if check.get("remediation"):
+            lines.append(f"  Fix: {check['remediation']}")
+    return "\n".join(lines)
 
 
 COMMANDS = {
@@ -774,6 +954,8 @@ COMMANDS = {
     "workflows": cmd_workflows,
     "validate": cmd_validate,
     "install": cmd_install,
+    "uninstall": cmd_uninstall,
+    "doctor": cmd_doctor,
 }
 
 

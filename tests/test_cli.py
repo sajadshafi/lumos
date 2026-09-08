@@ -6,6 +6,7 @@ import io
 import json
 import unittest
 from contextlib import redirect_stdout
+from unittest.mock import patch
 
 from ai_loom.cli import main
 from support import OrchestratorTestCase, report  # noqa: E402
@@ -228,6 +229,82 @@ class InspectionTests(CliTestCase):
         self.assertTrue(payload["ok"])
         self.assertTrue((destination / "SKILL.md").is_file())
         self.assertTrue((destination / "agents" / "openai.yaml").is_file())
+        self.assertTrue((destination / ".lumos-install.json").is_file())
+
+    def test_install_without_runtime_detects_all_configured_homes(self):
+        codex_home = self.tmp / "codex"
+        claude_home = self.tmp / "claude"
+        codex_home.mkdir()
+        claude_home.mkdir()
+        with patch.dict("os.environ", {"CODEX_HOME": str(codex_home), "CLAUDE_HOME": str(claude_home)}, clear=False):
+            code, payload = self.run_json("install", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual({item["runtime"] for item in payload["results"]}, {"codex", "claude"})
+        self.assertTrue((codex_home / "skills" / "lumos" / "SKILL.md").is_file())
+        self.assertTrue((claude_home / "skills" / "lumos" / "SKILL.md").is_file())
+
+    def test_install_dry_run_does_not_write(self):
+        codex_home = self.tmp / "dry-codex"
+        with patch.dict("os.environ", {"CODEX_HOME": str(codex_home)}, clear=False):
+            code, payload = self.run_json("install", "codex", "--dry-run")
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["dry_run"])
+        self.assertFalse(codex_home.exists())
+
+    def test_install_dry_run_has_human_readable_output(self):
+        codex_home = self.tmp / "human-codex"
+        codex_home.mkdir()
+        with patch.dict("os.environ", {"CODEX_HOME": str(codex_home)}, clear=False):
+            code, output = self.run_cli("install", "--dry-run")
+        self.assertEqual(code, 0)
+        self.assertIn("Installation plan", output)
+        self.assertIn("codex: install", output)
+        self.assertFalse((codex_home / "skills" / "lumos").exists())
+
+    def test_runtime_install_failure_does_not_hide_other_results(self):
+        import ai_loom.runtime_installers as installers
+
+        class BrokenInstaller(installers.RuntimeInstaller):
+            name = "broken"
+            default_home = ".broken"
+
+            def detect(self):
+                raise OSError("detection failed")
+
+        codex_home = self.tmp / "isolated-codex"
+        with patch.dict("os.environ", {"CODEX_HOME": str(codex_home)}, clear=False):
+            with patch.dict(
+                installers._INSTALLERS,
+                {"codex": installers.CodexInstaller, "broken": BrokenInstaller},
+                clear=True,
+            ):
+                code, payload = self.run_json("install", "--all", "--json")
+        self.assertEqual(code, 1)
+        by_runtime = {item["runtime"]: item for item in payload["results"]}
+        self.assertEqual(by_runtime["broken"]["action"], "failed")
+        self.assertEqual(by_runtime["codex"]["action"], "installed")
+
+    def test_uninstall_removes_managed_installation(self):
+        codex_home = self.tmp / "uninstall-codex"
+        with patch.dict("os.environ", {"CODEX_HOME": str(codex_home)}, clear=False):
+            self.run_json("install", "codex")
+            code, payload = self.run_json("uninstall", "codex", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["results"][0]["applied"])
+        self.assertFalse((codex_home / "skills" / "lumos").exists())
+
+    def test_doctor_json_is_structured_and_does_not_expose_secrets(self):
+        with patch.dict(
+            "os.environ",
+            {"GITHUB_TOKEN": "super-secret-value", "LUMOS_MCP_COMMAND": "bridge --token hidden"},
+            clear=False,
+        ):
+            code, payload = self.run_json("doctor", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["schema_version"], 1)
+        rendered = json.dumps(payload)
+        self.assertNotIn("super-secret-value", rendered)
+        self.assertNotIn("bridge --token hidden", rendered)
 
     def test_skills_lists_invokable_and_inert(self):
         _, payload = self.run_json("skills")
