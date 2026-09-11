@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- Add `lumos init [directory]` to generate an immediately valid starter project.
+- Scaffold a mixed agent/skill workflow, editable workers, constraints, configuration, and ignored state directories.
+- Add idempotent initialization, conflict preservation, `--force`, `--dry-run`, and JSON output.
+- Teach the installed AI runtime skill to handle `/lumos init` and `$lumos init` prompts.
+
 ## 0.4.0
 
 - Make `lumos install` auto-detect and configure supported AI runtimes.

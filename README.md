@@ -16,6 +16,7 @@ Recommended installation from PyPI:
 ```bash
 pipx install lumos
 lumos install             # auto-detect Codex and Claude Code
+lumos init my-project      # create a runnable starter project
 lumos doctor
 ```
 
@@ -53,7 +54,20 @@ Restart or reload each configured AI runtime after installation. You can then ru
 
 ## Configure a project
 
-Add `lumos.yaml` at the repository root:
+Initialize a new or existing repository:
+
+```bash
+cd my-project
+lumos init
+lumos validate default
+```
+
+This creates a mixed starter workflow, editable planner/reviewer agents,
+coding/testing/fixer skills, default constraints, and ignored runtime-state
+directories. Existing files are never overwritten unless you explicitly pass
+`--force`. See [Project initialization](docs/initialization.md) for all options.
+
+The generated `lumos.yaml` starts with:
 
 ```yaml
 version: 1
@@ -133,6 +147,7 @@ reports flow downstream and are validated before the workflow advances.
 - [`templates/agent/AGENT.md`](templates/agent/AGENT.md) — agent starter
 - [`templates/workflow.yaml`](templates/workflow.yaml) — mixed workflow starter
 - [Getting started](docs/getting-started.md)
+- [Project initialization](docs/initialization.md)
 - [Installation and runtime management](docs/installation.md)
 - [Configuration](docs/configuration.md)
 - [Worker authoring](docs/worker-authoring.md)
