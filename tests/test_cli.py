@@ -215,6 +215,45 @@ class ExitCodeTests(CliTestCase):
 
 
 class InspectionTests(CliTestCase):
+    def test_init_creates_a_valid_project_with_json_output(self):
+        target = self.tmp / "initialized"
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = main(["init", str(target), "--ticket-prefix", "C3#", "--json"])
+        payload = json.loads(buffer.getvalue())
+
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["root"], str(target.resolve()))
+        self.assertTrue((target / "lumos.yaml").is_file())
+        with redirect_stdout(io.StringIO()) as validation_output:
+            validation_code = main(["--project-dir", str(target), "validate", "default"])
+        self.assertEqual(validation_code, 0, validation_output.getvalue())
+
+    def test_init_reports_conflicts_and_preserves_existing_files(self):
+        target = self.tmp / "conflicting-init"
+        target.mkdir()
+        config = target / "lumos.yaml"
+        config.write_text("keep: me\n", encoding="utf-8")
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = main(["init", str(target), "--json"])
+        payload = json.loads(buffer.getvalue())
+
+        self.assertEqual(code, 1)
+        self.assertIn("lumos.yaml", payload["conflicts"])
+        self.assertEqual(config.read_text(encoding="utf-8"), "keep: me\n")
+
+    def test_init_without_directory_uses_the_current_directory(self):
+        target = self.tmp / "current-directory-init"
+        buffer = io.StringIO()
+        with patch("ai_loom.cli.Path.cwd", return_value=target), redirect_stdout(buffer):
+            code = main(["init", "--json"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(buffer.getvalue())["root"], str(target.resolve()))
+        self.assertTrue((target / "lumos.yaml").is_file())
+
     def test_trackers_lists_first_party_providers_and_local_default(self):
         code, payload = self.run_json("trackers")
         self.assertEqual(code, 0)

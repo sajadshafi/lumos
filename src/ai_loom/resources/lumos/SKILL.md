@@ -1,11 +1,19 @@
 ---
 name: lumos
-description: "Run a ticket continuously through a configured spec-driven workflow of AI skills and delegated agents. Use for /lumos or $lumos requests, end-to-end ticket delivery, run resumption, and Lumos status checks."
+description: "Initialize projects or run tickets continuously through configured workflows of AI skills and delegated agents. Use for /lumos or $lumos init, ticket delivery, resumption, and status checks."
 ---
 
 # Lumos
 
 Drive the deterministic Lumos engine; do not replace its sequencing decisions.
+
+If the request is `/lumos init`, `$lumos init`, or asks to initialize Lumos,
+run `lumos init` in the requested project directory and report the generated
+files. Pass through requested `--name`, `--ticket-prefix`, or `--tracker`
+options. Never add `--force` unless the user explicitly asks to overwrite
+existing scaffold files. After a successful initialization, run
+`lumos validate default` and invite the user to customize the generated workers
+and workflow. Do not interpret `init` as a ticket identifier.
 
 Accept `/lumos TC#123`, `$lumos TC#123`, or a bare number. Bare numbers and
 `#123` use `ticket.prefix` from `lumos.yaml`; pass through explicit prefixes.

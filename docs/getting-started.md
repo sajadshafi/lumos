@@ -10,16 +10,21 @@ lumos install codex
 Use `lumos install claude` for Claude Code. Restart the runtime so it discovers
 the `/lumos` skill.
 
-## 2. Add project configuration
+## 2. Initialize a project
 
-Copy [`lumos.yaml`](../lumos.yaml) and choose a workflow from `workflows/`.
-Projects may put their own workers in `skills/` and `agents/`; otherwise this
-repository's examples provide a working starter set.
+Run the initializer at your repository root:
 
 ```bash
+cd your-project
+lumos init
 lumos workers
-lumos workflows --validate
+lumos validate default
 ```
+
+The generated project contains an editable mixed workflow, two agents, three
+skills, default constraints, and ignored state directories. Existing scaffold
+files are preserved. See [Project initialization](initialization.md) to select a
+ticket prefix or tracker, preview changes, and handle conflicts.
 
 ## 3. Run a ticket
 

@@ -44,6 +44,7 @@ from .config import (
 )
 from .engine import Engine
 from .errors import OrchestratorError
+from .initializer import InitResult, initialize_project
 from .logging_ import RunLogger, iter_events, render_timeline
 from .models import Action, StageStatus, Verdict, WorkflowState, WorkflowStatus, WorkItem
 from .runtime_installers import create_runtime_installer, runtime_installers
@@ -104,6 +105,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory of agents (defaults to $LUMOS_AGENTS_DIR, then ./agents, then examples/agents)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    init = sub.add_parser("init", help="create a starter Lumos project")
+    init.add_argument("directory", nargs="?", default=None, help="target directory (defaults to the current directory)")
+    init.add_argument("--name", default="", help="project name used in generated descriptions")
+    init.add_argument("--ticket-prefix", default="TC", help="default ticket prefix (default: TC)")
+    init.add_argument("--tracker", choices=tuple(sorted(list_adapters())), default="local")
+    init.add_argument("--force", action="store_true", help="overwrite conflicting Lumos scaffold files")
+    init.add_argument("--dry-run", action="store_true", help="preview files without writing them")
+    init.add_argument("--json", action="store_true", help="emit machine-readable results")
 
     start = sub.add_parser("start", help="create or resume a run for a work item")
     start.add_argument("work_item")
@@ -271,6 +281,27 @@ def _terminal_exit_code(state: WorkflowState) -> int:
 # --------------------------------------------------------------------------- #
 # Commands
 # --------------------------------------------------------------------------- #
+
+
+def cmd_init(args: argparse.Namespace, paths: Paths) -> int:
+    if args.directory and args.project_dir:
+        raise OrchestratorError("choose an init directory or --project-dir, not both")
+    destination = (
+        Path(args.directory or args.project_dir).expanduser() if (args.directory or args.project_dir) else Path.cwd()
+    )
+    result = initialize_project(
+        destination,
+        project_name=args.name,
+        ticket_prefix=args.ticket_prefix,
+        tracker=args.tracker,
+        force=args.force,
+        dry_run=args.dry_run,
+    )
+    if args.json:
+        _emit_json(result.to_dict())
+    else:
+        print(_render_init(result))
+    return 0 if result.ok else 1
 
 
 def cmd_start(args: argparse.Namespace, paths: Paths) -> int:
@@ -938,7 +969,26 @@ def _render_doctor(checks: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _render_init(result: InitResult) -> str:
+    title = "Lumos initialization plan" if result.dry_run else "Lumos project initialized"
+    lines = [f"{title}: {result.root}", ""]
+    for relative in result.created:
+        lines.append(f"+ {'would create' if result.dry_run else 'created'} {relative}")
+    for relative in result.overwritten:
+        lines.append(f"~ {'would overwrite' if result.dry_run else 'overwrote'} {relative}")
+    for relative in result.unchanged:
+        lines.append(f"= unchanged {relative}")
+    for relative in result.conflicts:
+        lines.append(f"! preserved existing {relative}")
+    if result.conflicts:
+        lines.extend(["", "Resolve the conflicts manually or rerun with --force to replace scaffold files."])
+    elif not result.dry_run:
+        lines.extend(["", "Next: run `lumos validate default`, then `/lumos <ticket>` in your AI runtime."])
+    return "\n".join(lines)
+
+
 COMMANDS = {
+    "init": cmd_init,
     "start": cmd_start,
     "next": cmd_next,
     "record": cmd_record,
