@@ -909,10 +909,14 @@ def cmd_doctor(args: argparse.Namespace, paths: Paths) -> int:
 def _render_runtime_results(title: str, results: list[dict[str, Any]]) -> str:
     lines = [title, ""]
     symbols = {
+        "install": "~",
         "installed": "+",
+        "update": "~",
         "updated": "+",
-        "repair-manifest": "+",
+        "repair-manifest": "~",
         "unchanged": "=",
+        "uninstall": "-",
+        "not-managed": "=",
         "skipped": "-",
         "conflict": "!",
     }
