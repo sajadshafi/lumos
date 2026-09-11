@@ -1,6 +1,6 @@
 ---
 name: lumos
-description: "Initialize projects or run tickets continuously through configured workflows of AI skills and delegated agents. Use for /lumos or $lumos init, ticket delivery, resumption, and status checks."
+description: "Initialize projects or run tickets continuously through configured workflows of AI skills and delegated agents. Use when the user says lumos init, /lumos init, or $lumos init, or requests ticket delivery, resumption, or status checks."
 ---
 
 # Lumos
